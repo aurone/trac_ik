@@ -69,17 +69,22 @@ public:
 
     ~TRAC_IK();
 
+    // TODO: two-phase initialization
+
+    // TODO: propagate timeout to underlying solvers
+    void setTimeout(double max_time) { max_time_ = max_time; }
+
     bool getKDLChain(KDL::Chain& chain_)
     {
-        chain_ = chain;
-        return initialized;
+        chain_ = chain_;
+        return true;
     }
 
     bool getKDLLimits(KDL::JntArray& lb_, KDL::JntArray& ub_)
     {
-        lb_ = lb;
-        ub_ = ub;
-        return initialized;
+        lb_ = joint_min_;
+        ub_ = joint_max_;
+        return true;
     }
 
     static double JointErr(
@@ -100,33 +105,34 @@ public:
         KDL::JntArray &q_out,
         const KDL::Twist& bounds = KDL::Twist::Zero());
 
-    void SetSolveType(SolveType _type) { solvetype = _type; }
+    void SetSolveType(SolveType _type) { solve_type_ = _type; }
 
 private:
 
-    bool initialized;
-    KDL::Chain chain;
-    KDL::JntArray lb, ub;
-    boost::scoped_ptr<KDL::ChainJntToJacSolver> jacsolver;
-    double eps;
-    double maxtime;
-    SolveType solvetype;
+    KDL::Chain chain_;
+    KDL::JntArray joint_min_;
+    KDL::JntArray joint_max_;
+    std::vector<KDL::BasicJointType> joint_types_;
 
-    boost::scoped_ptr<NLOPT_IK::NLOPT_IK> nl_solver;
-    boost::scoped_ptr<KDL::ChainIkSolverPos_TL> iksolver;
+    double eps_;
+    double max_time_;
+    SolveType solve_type_;
+    KDL::Twist bounds_;
 
-    boost::posix_time::ptime start_time;
+    boost::scoped_ptr<KDL::ChainJntToJacSolver> jac_solver_;
 
-    std::vector<KDL::BasicJointType> types;
+    boost::scoped_ptr<NLOPT_IK::NLOPT_IK> nl_solver_;
+    boost::scoped_ptr<KDL::ChainIkSolverPos_TL> ik_solver_;
+
+    boost::posix_time::ptime start_time_;
 
     boost::mutex mtx_;
-    std::vector<KDL::JntArray> solutions;
-    std::vector<std::pair<double, uint> > errors;
+    std::vector<KDL::JntArray> solutions_;
+    std::vector<std::pair<double, uint> > errors_;
 
-    boost::asio::io_service io_service;
-    boost::thread_group threads;
-    boost::asio::io_service::work work;
-    KDL::Twist bounds;
+    boost::asio::io_service io_service_;
+    boost::thread_group threads_;
+    boost::asio::io_service::work work_;
 
     bool runKDL(const KDL::JntArray &q_init, const KDL::Frame &p_in);
 

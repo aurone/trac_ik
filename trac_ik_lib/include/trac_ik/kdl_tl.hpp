@@ -41,79 +41,120 @@ namespace TRAC_IK {
 
 namespace KDL {
 
-  enum BasicJointType { RotJoint, TransJoint, Continuous };
+enum BasicJointType {
+    RotJoint, TransJoint, Continuous
+};
 
-  class ChainIkSolverPos_TL 
-  {
+/// An inverse kinematics algorithm that computes an inverse kinematics solution
+/// via repeated application.
+class ChainIkSolverPos_TL
+{
     friend class TRAC_IK::TRAC_IK;
 
-  public:
-    ChainIkSolverPos_TL(const Chain& chain,const JntArray& q_min, const JntArray& q_max, double maxtime=0.005, double eps=1e-3, bool random_restart=false, bool try_jl_wrap=false);
+public:
+
+    ChainIkSolverPos_TL(
+            const Chain& chain,
+            const JntArray& q_min,
+            const JntArray& q_max,
+            double eps = 1e-3,
+            bool random_restart = false,
+            bool try_jl_wrap = false);
 
     ~ChainIkSolverPos_TL();
 
-    int CartToJnt(const KDL::JntArray& q_init, const KDL::Frame& p_in, KDL::JntArray& q_out, const KDL::Twist bounds=KDL::Twist::Zero());
+    /// \name Configuration
+    ///@{
+    void setBounds(const KDL::Twist& bounds);
+    auto bounds() const -> const KDL::Twist& { return bounds_; }
 
-    inline void setMaxtime(double t) { maxtime = t; }
-      
-  private:
-    const Chain chain;
-    JntArray q_min;
-    JntArray q_max;
+    void setEps(double eps) { eps_ = eps; }
+    double eps() const { return eps_; }
+    ///@}
 
-    KDL::Twist bounds;
+    /// Reset the current position and target frame of the solver.
+    void restart(const KDL::JntArray& q_init, const KDL::Frame& p_in);
 
-    KDL::ChainIkSolverVel_pinv vik_solver;
-    KDL::ChainFkSolverPos_recursive fksolver;
-    JntArray delta_q;
-    double maxtime;
+    /// Reset the current position, but NOT the target frame, of the solver.
+    void restart(const KDL::JntArray& q_init);
 
-    double eps;
-    
-    bool rr;
-    bool wrap;
+    /// Step through a single iteration of the solver.
+    ///
+    /// Returns 0 if the solver has already converged to a solution and a
+    /// non-zero value otherwise.
+    int step();
 
-    std::vector<KDL::BasicJointType> types;
+    /// The current configuration in the solver; the solution configuration
+    /// if the solver has converged to a solution.
+    const KDL::JntArray& qout() const { return *q_curr_; }
 
-    inline void abort() {
-      aborted = true;
+    int CartToJnt(
+            const KDL::JntArray& q_init,
+            const KDL::Frame& p_in,
+            KDL::JntArray& q_out,
+            const KDL::Twist& bounds = KDL::Twist::Zero());
+
+private:
+
+    const Chain chain_;
+    JntArray joint_min_;
+    JntArray joint_max_;
+    std::vector<KDL::BasicJointType> joint_types_;
+
+    KDL::JntArray q_buff1_;
+    KDL::JntArray q_buff2_;
+
+    KDL::JntArray *q_curr_;
+    KDL::JntArray *q_next_;
+
+    KDL::Frame f_curr_;
+    KDL::JntArray delta_q_;
+
+    // step configuration
+    KDL::Twist bounds_;
+    double eps_;
+    bool rr_;
+    bool wrap_;
+
+    KDL::Frame f_target_;
+
+    KDL::ChainIkSolverVel_pinv vik_solver_;
+    KDL::ChainFkSolverPos_recursive fk_solver_;
+
+    bool aborted_;
+
+    void abort() { aborted_ = true; }
+    void reset() { aborted_ = false; }
+
+    void randomize(KDL::JntArray& q);
+
+    static double fRand(double min, double max) {
+        double f = (double) rand() / RAND_MAX;
+        return min + f * (max - min);
     }
+};
 
-    inline void reset() {
-      aborted = false;
-    }
-
-    bool aborted;
-
-    Frame f;
-    Twist delta_twist;
-
-    inline static double fRand(double min, double max)
-    {
-      double f = (double)rand() / RAND_MAX;
-      return min + f * (max - min);
-    }
-
-
-  };
-
-  /**
-   * determines the rotation axis necessary to rotate from frame b1 to the
-   * orientation of frame b2 and the vector necessary to translate the origin
-   * of b1 to the origin of b2, and stores the result in a Twist
-   * datastructure.  The result is w.r.t. frame b1.
-   * \param F_a_b1 frame b1 expressed with respect to some frame a.
-   * \param F_a_b2 frame b2 expressed with respect to some frame a.
-   * \warning The result is not a real Twist!
-   * \warning In contrast to standard KDL diff methods, the result of
-   * diffRelative is w.r.t. frame b1 instead of frame a.
-   */
-  IMETHOD Twist diffRelative(const Frame & F_a_b1, const Frame & F_a_b2, double dt = 1)
-  {
-      return Twist(F_a_b1.M.Inverse() * diff(F_a_b1.p, F_a_b2.p, dt),
-                   F_a_b1.M.Inverse() * diff(F_a_b1.M, F_a_b2.M, dt));
-  }
-
+/**
+ * determines the rotation axis necessary to rotate from frame b1 to the
+ * orientation of frame b2 and the vector necessary to translate the origin
+ * of b1 to the origin of b2, and stores the result in a Twist
+ * datastructure.  The result is w.r.t. frame b1.
+ * \param F_a_b1 frame b1 expressed with respect to some frame a.
+ * \param F_a_b2 frame b2 expressed with respect to some frame a.
+ * \warning The result is not a real Twist!
+ * \warning In contrast to standard KDL diff methods, the result of
+ * diffRelative is w.r.t. frame b1 instead of frame a.
+ */
+IMETHOD Twist diffRelative(
+    const Frame & F_a_b1,
+    const Frame & F_a_b2,
+    double dt = 1)
+{
+    return Twist(
+            F_a_b1.M.Inverse() * diff(F_a_b1.p, F_a_b2.p, dt),
+            F_a_b1.M.Inverse() * diff(F_a_b1.M, F_a_b2.M, dt));
 }
+
+} // namespace KDL
 
 #endif

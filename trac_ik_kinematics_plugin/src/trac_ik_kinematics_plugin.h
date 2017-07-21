@@ -31,6 +31,7 @@ OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <moveit/kinematics_base/kinematics_base.h>
 #include <kdl/chain.hpp>
 #include <kdl/jntarray.hpp>
+#include <trac_ik/trac_ik.hpp>
 
 namespace trac_ik_kinematics_plugin {
 
@@ -42,13 +43,13 @@ public:
      *  @brief Interface for an TRAC-IK kinematics plugin
      */
     TRAC_IKKinematicsPlugin() :
+        num_joints_(0),
         active_(false),
-        position_ik_(false)
-    {
-    }
+        position_ik_(false),
+        solve_type_(TRAC_IK::Speed)
+    { }
 
-    ~TRAC_IKKinematicsPlugin() {
-    }
+    ~TRAC_IKKinematicsPlugin() { }
 
     /**
      * @brief Given a desired pose of the end-effector, compute the joint angles to reach it
@@ -172,26 +173,30 @@ public:
 
 private:
 
+    uint num_joints_;
     std::vector<std::string> joint_names_;
     std::vector<std::string> link_names_;
+    KDL::JntArray joint_min_;
+    KDL::JntArray joint_max_;
+    KDL::Chain chain_;
 
-    uint num_joints_;
+    KDL::Twist bounds_;
 
     // Internal variable that indicates whether solvers are configured and ready
     bool active_;
 
-    KDL::Chain chain;
     bool position_ik_;
+    TRAC_IK::SolveType solve_type_;
+
+    std::unique_ptr<TRAC_IK::TRAC_IK> solver_;
+
     const std::vector<std::string>& getJointNames() const {
         return joint_names_;
     }
+
     const std::vector<std::string>& getLinkNames() const {
         return link_names_;
     }
-
-    KDL::JntArray joint_min, joint_max;
-
-    std::string solve_type;
 
     bool initialize(
         const std::string &robot_description,
