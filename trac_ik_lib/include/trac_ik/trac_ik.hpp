@@ -28,7 +28,6 @@ OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISE
 OF THE POSSIBILITY OF SUCH DAMAGE.
 ********************************************************************************/
 
-
 #ifndef TRAC_IK_HPP
 #define TRAC_IK_HPP
 
@@ -38,48 +37,73 @@ OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <boost/asio.hpp>
 #include <boost/scoped_ptr.hpp>
 
-
 namespace TRAC_IK {
 
-  enum SolveType { Speed, Distance, Manip1, Manip2 };
+enum SolveType
+{
+    Speed,
+    Distance,
+    Manip1,
+    Manip2
+};
 
-  class TRAC_IK 
-  {
-  public:
-    TRAC_IK(const KDL::Chain& _chain, const KDL::JntArray& _q_min, const KDL::JntArray& _q_max, double _maxtime=0.005, double _eps=1e-5, SolveType _type=Speed);
+class TRAC_IK
+{
+public:
 
-    TRAC_IK(const std::string& base_link, const std::string& tip_link, const std::string& URDF_param="/robot_description", double _maxtime=0.005, double _eps=1e-5, SolveType _type=Speed);
+    TRAC_IK(
+        const KDL::Chain& _chain,
+        const KDL::JntArray& _q_min,
+        const KDL::JntArray& _q_max,
+        double _maxtime = 0.005,
+        double _eps = 1e-5,
+        SolveType _type = Speed);
+
+    TRAC_IK(
+        const std::string& base_link,
+        const std::string& tip_link,
+        const std::string& URDF_param = "/robot_description",
+        double _maxtime = 0.005,
+        double _eps = 1e-5,
+        SolveType _type = Speed);
 
     ~TRAC_IK();
 
-    bool getKDLChain(KDL::Chain& chain_) {
-      chain_=chain;
-      return initialized;
+    bool getKDLChain(KDL::Chain& chain_)
+    {
+        chain_ = chain;
+        return initialized;
     }
 
-    bool getKDLLimits(KDL::JntArray& lb_, KDL::JntArray& ub_) {
-      lb_=lb;
-      ub_=ub;
-      return initialized;
+    bool getKDLLimits(KDL::JntArray& lb_, KDL::JntArray& ub_)
+    {
+        lb_ = lb;
+        ub_ = ub;
+        return initialized;
     }
 
+    static double JointErr(
+        const KDL::JntArray& arr1,
+        const KDL::JntArray& arr2)
+    {
+        double err = 0;
+        for (uint i = 0; i < arr1.data.size(); i++) {
+            err += pow(arr1(i) - arr2(i), 2);
+        }
 
-    static double JointErr(const KDL::JntArray& arr1, const KDL::JntArray& arr2) {
-      double err = 0;
-      for (uint i=0; i<arr1.data.size(); i++) {
-        err += pow(arr1(i) - arr2(i),2);
-      }
-      
-      return err;
+        return err;
     }
 
-    int CartToJnt(const KDL::JntArray &q_init, const KDL::Frame &p_in, KDL::JntArray &q_out, const KDL::Twist& bounds=KDL::Twist::Zero());
+    int CartToJnt(
+        const KDL::JntArray &q_init,
+        const KDL::Frame &p_in,
+        KDL::JntArray &q_out,
+        const KDL::Twist& bounds = KDL::Twist::Zero());
 
-    inline void SetSolveType(SolveType _type) {
-      solvetype = _type;
-    }
+    void SetSolveType(SolveType _type) { solvetype = _type; }
 
-  private:
+private:
+
     bool initialized;
     KDL::Chain chain;
     KDL::JntArray lb, ub;
@@ -93,52 +117,49 @@ namespace TRAC_IK {
 
     boost::posix_time::ptime start_time;
 
-    bool runKDL(const KDL::JntArray &q_init, const KDL::Frame &p_in);
-
-
-    bool runNLOPT(const KDL::JntArray &q_init, const KDL::Frame &p_in);
-
-    void normalize_seed(const KDL::JntArray& seed, KDL::JntArray& solution);
-    void normalize_limits(const KDL::JntArray& seed, KDL::JntArray& solution);
-
-  
     std::vector<KDL::BasicJointType> types;
 
     boost::mutex mtx_;
     std::vector<KDL::JntArray> solutions;
-    std::vector<std::pair<double,uint> >  errors; 
-
+    std::vector<std::pair<double, uint> > errors;
 
     boost::asio::io_service io_service;
     boost::thread_group threads;
     boost::asio::io_service::work work;
     KDL::Twist bounds;
 
+    bool runKDL(const KDL::JntArray &q_init, const KDL::Frame &p_in);
+
+    bool runNLOPT(const KDL::JntArray &q_init, const KDL::Frame &p_in);
+
+    void normalize_seed(const KDL::JntArray& seed, KDL::JntArray& solution);
+    void normalize_limits(const KDL::JntArray& seed, KDL::JntArray& solution);
+
     bool unique_solution(const KDL::JntArray& sol);
 
-    inline static double fRand(double min, double max)
+    static double fRand(double min, double max)
     {
-      double f = (double)rand() / RAND_MAX;
-      return min + f * (max - min);
+        double f = (double) rand() / RAND_MAX;
+        return min + f * (max - min);
     }
 
     /* @brief Manipulation metrics and penalties taken from "Workspace
-    Geometric Characterization and Manipulability of Industrial Robots",
-    Ming-June, Tsia, PhD Thesis, Ohio State University, 1986. 
-    https://etd.ohiolink.edu/!etd.send_file?accession=osu1260297835
-    */
-    double manipPenalty(const KDL::JntArray&); 
-    double ManipValue1(const KDL::JntArray&); 
+     Geometric Characterization and Manipulability of Industrial Robots",
+     Ming-June, Tsia, PhD Thesis, Ohio State University, 1986.
+     https://etd.ohiolink.edu/!etd.send_file?accession=osu1260297835
+     */
+    double manipPenalty(const KDL::JntArray&);
+    double ManipValue1(const KDL::JntArray&);
     double ManipValue2(const KDL::JntArray&);
 
-    inline bool myEqual(const KDL::JntArray& a, const KDL::JntArray& b) {
-      return (a.data-b.data).isZero(1e-4);
+    bool myEqual(const KDL::JntArray& a, const KDL::JntArray& b)
+    {
+        return (a.data - b.data).isZero(1e-4);
     }
 
     void initialize();
+};
 
-  };
-
-}
+} // namespace TRAC_IK
 
 #endif
