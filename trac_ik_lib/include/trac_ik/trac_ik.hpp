@@ -5,7 +5,7 @@ All rights reserved.
 Redistribution and use in source and binary forms, with or without modification,
  are permitted provided that the following conditions are met:
 
-    1. Redistributions of source code must retain the above copyright notice, 
+    1. Redistributions of source code must retain the above copyright notice,
        this list of conditions and the following disclaimer.
 
     2. Redistributions in binary form must reproduce the above copyright notice,
@@ -13,17 +13,17 @@ Redistribution and use in source and binary forms, with or without modification,
        and/or other materials provided with the distribution.
 
     3. Neither the name of the copyright holder nor the names of its contributors
-       may be used to endorse or promote products derived from this software 
+       may be used to endorse or promote products derived from this software
        without specific prior written permission.
 
 THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
-ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED 
+ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
 WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
 IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT,
-INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, 
-BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, 
+INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING,
+BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
 DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF
-LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE 
+LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE
 OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED
 OF THE POSSIBILITY OF SUCH DAMAGE.
 ********************************************************************************/
@@ -59,20 +59,11 @@ public:
         double _eps = 1e-5,
         SolveType _type = Speed);
 
-    TRAC_IK(
-        const std::string& base_link,
-        const std::string& tip_link,
-        const std::string& URDF_param = "/robot_description",
-        double _maxtime = 0.005,
-        double _eps = 1e-5,
-        SolveType _type = Speed);
-
     ~TRAC_IK();
-
-    // TODO: two-phase initialization
 
     // TODO: propagate timeout to underlying solvers
     void setTimeout(double max_time) { max_time_ = max_time; }
+    void setBounds(const KDL::Twist& bounds) { bounds_ = bounds; }
 
     bool getKDLChain(KDL::Chain& chain_)
     {
@@ -117,12 +108,13 @@ private:
     double eps_;
     double max_time_;
     SolveType solve_type_;
+
     KDL::Twist bounds_;
 
-    boost::scoped_ptr<KDL::ChainJntToJacSolver> jac_solver_;
+    KDL::ChainJntToJacSolver jac_solver_;
 
-    boost::scoped_ptr<NLOPT_IK::NLOPT_IK> nl_solver_;
-    boost::scoped_ptr<KDL::ChainIkSolverPos_TL> ik_solver_;
+    NLOPT_IK::NLOPT_IK nl_solver_;
+    KDL::ChainIkSolverPos_TL ik_solver_;
 
     boost::posix_time::ptime start_time_;
 
@@ -162,8 +154,6 @@ private:
     {
         return (a.data - b.data).isZero(1e-4);
     }
-
-    void initialize();
 };
 
 } // namespace TRAC_IK

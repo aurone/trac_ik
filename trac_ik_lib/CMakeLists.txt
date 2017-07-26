@@ -46,7 +46,8 @@ include_directories(
 add_library(trac_ik
   src/kdl_tl.cpp
   src/nlopt_ik.cpp
-  src/trac_ik.cpp)
+  src/trac_ik.cpp
+  src/utils.cpp)
 target_link_libraries(trac_ik
   ${catkin_LIBRARIES}
   ${pkg_nlopt_LIBRARIES}

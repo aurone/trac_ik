@@ -43,7 +43,6 @@ public:
      *  @brief Interface for an TRAC-IK kinematics plugin
      */
     TRAC_IKKinematicsPlugin() :
-        num_joints_(0),
         active_(false),
         position_ik_(false),
         solve_type_(TRAC_IK::Speed)
@@ -173,7 +172,6 @@ public:
 
 private:
 
-    uint num_joints_;
     std::vector<std::string> joint_names_;
     std::vector<std::string> link_names_;
     KDL::JntArray joint_min_;

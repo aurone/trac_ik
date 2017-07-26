@@ -5,43 +5,42 @@ All rights reserved.
 Redistribution and use in source and binary forms, with or without modification,
  are permitted provided that the following conditions are met:
 
-    1. Redistributions of source code must retain the above copyright notice, 
+    1. Redistributions of source code must retain the above copyright notice,
        this list of conditions and the following disclaimer.
 
     2. Redistributions in binary form must reproduce the above copyright notice,
-       this list of conditions and the following disclaimer in the documentation 
+       this list of conditions and the following disclaimer in the documentation
        and/or other materials provided with the distribution.
 
     3. Neither the name of the copyright holder nor the names of its contributors
-       may be used to endorse or promote products derived from this software 
+       may be used to endorse or promote products derived from this software
        without specific prior written permission.
 
 THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
-ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED 
+ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
 WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
 IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT,
-INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, 
-BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, 
+INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING,
+BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
 DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF
-LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE 
+LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE
 OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED
 OF THE POSSIBILITY OF SUCH DAMAGE.
 ********************************************************************************/
 
 #include "trac_ik_kinematics_plugin.h"
 
-#include <ros/ros.h>
-#include <urdf/model.h>
-#include <tf_conversions/tf_kdl.h>
 #include <algorithm>
-#include <kdl/tree.hpp>
-#include <kdl_parser/kdl_parser.hpp>
-#include <trac_ik/trac_ik.hpp>
 #include <limits>
 
+#include <kdl/tree.hpp>
+#include <ros/ros.h>
+#include <tf_conversions/tf_kdl.h>
+#include <trac_ik/trac_ik.hpp>
+#include <trac_ik/utils.h>
+#include <urdf/model.h>
 
-namespace trac_ik_kinematics_plugin
-{
+namespace trac_ik_kinematics_plugin {
 
 bool TRAC_IKKinematicsPlugin::initialize(
     const std::string& robot_description,
@@ -53,81 +52,21 @@ bool TRAC_IKKinematicsPlugin::initialize(
     setValues(robot_description, group_name, base_name, tip_name, search_discretization);
 
     ros::NodeHandle node_handle("~");
-
     urdf::Model robot_model;
-    std::string xml_string;
 
-    std::string urdf_xml, full_urdf_xml;
-    node_handle.param("urdf_xml", urdf_xml, robot_description);
-    node_handle.searchParam(urdf_xml, full_urdf_xml);
-
-    ROS_DEBUG_NAMED("trac_ik","Reading xml file from parameter server");
-    if (!node_handle.getParam(full_urdf_xml, xml_string)) {
-        ROS_FATAL_NAMED("trac_ik", "Could not load the xml from parameter server: %s", urdf_xml.c_str());
+    if (!TRAC_IK::LoadModelOverride(node_handle, robot_description, robot_model)) {
+        ROS_WARN_STREAM_NAMED("trac_ik", "Failed to load robot model");
         return false;
     }
-
-    node_handle.param(full_urdf_xml, xml_string, std::string());
-    robot_model.initString(xml_string);
 
     ROS_DEBUG_STREAM_NAMED("trac_ik","Reading joints and links from URDF");
 
-    KDL::Tree tree;
-
-    if (!kdl_parser::treeFromUrdfModel(robot_model, tree)) {
-        ROS_FATAL("Failed to extract kdl tree from xml robot description");
+    if (!TRAC_IK::InitKDLChain(
+        robot_model, base_name, tip_name,
+        chain_, link_names_, joint_names_, joint_min_, joint_max_))
+    {
+        ROS_WARN_STREAM_NAMED("trac_ik", "Failed to initialize KDL chain");
         return false;
-    }
-
-    if (!tree.getChain(base_name, tip_name, chain_)) {
-        ROS_FATAL("Couldn't find chain %s to %s", base_name.c_str(), tip_name.c_str());
-        return false;
-    }
-
-    num_joints_ = chain_.getNrOfJoints();
-
-    std::vector<KDL::Segment> chain_segs = chain_.segments;
-
-    boost::shared_ptr<const urdf::Joint> joint;
-
-    std::vector<double> l_bounds, u_bounds;
-
-    joint_min_.resize(num_joints_);
-    joint_max_.resize(num_joints_);
-
-    uint joint_num = 0;
-    for (unsigned int i = 0; i < chain_segs.size(); ++i) {
-        link_names_.push_back(chain_segs[i].getName());
-        joint = robot_model.getJoint(chain_segs[i].getJoint().getName());
-        if (joint->type != urdf::Joint::UNKNOWN &&
-            joint->type != urdf::Joint::FIXED)
-        {
-            joint_num++;
-            assert(joint_num <= num_joints_);
-            float lower, upper;
-            int hasLimits;
-            joint_names_.push_back(joint->name);
-            if (joint->type != urdf::Joint::CONTINUOUS) {
-                if (joint->safety) {
-                    lower = std::max(joint->limits->lower, joint->safety->soft_lower_limit);
-                    upper = std::min(joint->limits->upper, joint->safety->soft_upper_limit);
-                } else {
-                    lower = joint->limits->lower;
-                    upper = joint->limits->upper;
-                }
-                hasLimits = 1;
-            } else {
-                hasLimits = 0;
-            }
-            if (hasLimits) {
-                joint_min_(joint_num - 1) = lower;
-                joint_max_(joint_num - 1) = upper;
-            } else {
-                joint_min_(joint_num - 1) = std::numeric_limits<float>::lowest();
-                joint_max_(joint_num - 1) = std::numeric_limits<float>::max();
-            }
-            ROS_INFO_STREAM("IK Using joint "<<chain_segs[i].getName()<<" "<<joint_min_(joint_num-1)<<" "<<joint_max_(joint_num-1));
-        }
     }
 
     ROS_INFO_NAMED("trac-ik plugin", "Looking in private handle: %s for param name: %s", node_handle.getNamespace().c_str(), (group_name + "/position_only_ik").c_str());
@@ -194,8 +133,8 @@ bool TRAC_IKKinematicsPlugin::getPositionFK(
     assert(active_);
 
     poses.resize(link_names.size());
-    if (joint_angles.size() != num_joints_) {
-        ROS_ERROR_NAMED("trac_ik", "Joint angles vector must have size: %d", num_joints_);
+    if (joint_angles.size() != chain_.getNrOfJoints()) {
+        ROS_ERROR_NAMED("trac_ik", "Joint angles vector must have size: %d", chain_.getNrOfJoints());
         return false;
     }
 
@@ -203,8 +142,8 @@ bool TRAC_IKKinematicsPlugin::getPositionFK(
     geometry_msgs::PoseStamped pose;
     tf::Stamped<tf::Pose> tf_pose;
 
-    KDL::JntArray jnt_pos_in(num_joints_);
-    for (unsigned int i = 0; i < num_joints_; i++) {
+    KDL::JntArray jnt_pos_in(chain_.getNrOfJoints());
+    for (unsigned int i = 0; i < chain_.getNrOfJoints(); i++) {
         jnt_pos_in(i) = joint_angles[i];
     }
 
@@ -342,8 +281,8 @@ bool TRAC_IKKinematicsPlugin::searchPositionIK(
 
     assert(active_);
 
-    if (ik_seed_state.size() != num_joints_) {
-        ROS_ERROR_STREAM_NAMED("trac_ik", "Seed state must have size " << num_joints_ << " instead of size " << ik_seed_state.size());
+    if (ik_seed_state.size() != chain_.getNrOfJoints()) {
+        ROS_ERROR_STREAM_NAMED("trac_ik", "Seed state must have size " << chain_.getNrOfJoints() << " instead of size " << ik_seed_state.size());
         error_code.val = error_code.NO_IK_SOLUTION;
         return false;
     }
@@ -351,10 +290,10 @@ bool TRAC_IKKinematicsPlugin::searchPositionIK(
     KDL::Frame frame;
     tf::poseMsgToKDL(ik_pose, frame);
 
-    KDL::JntArray in(num_joints_);
-    KDL::JntArray out(num_joints_);
+    KDL::JntArray in(chain_.getNrOfJoints());
+    KDL::JntArray out(chain_.getNrOfJoints());
 
-    for (uint z = 0; z < num_joints_; z++) {
+    for (uint z = 0; z < chain_.getNrOfJoints(); z++) {
         in(z) = ik_seed_state[z];
     }
 
@@ -367,9 +306,9 @@ bool TRAC_IKKinematicsPlugin::searchPositionIK(
         return false;
     }
 
-    solution.resize(num_joints_);
+    solution.resize(chain_.getNrOfJoints());
 
-    for (uint z = 0; z < num_joints_; z++) {
+    for (uint z = 0; z < chain_.getNrOfJoints(); z++) {
         solution[z] = out(z);
     }
 
