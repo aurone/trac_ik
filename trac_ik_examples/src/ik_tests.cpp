@@ -28,6 +28,7 @@ OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISE
 OF THE POSSIBILITY OF SUCH DAMAGE.
 ********************************************************************************/
 
+#include <chrono>
 #include <boost/date_time.hpp>
 #include <kdl/chainiksolverpos_nr_jl.hpp>
 #include <ros/ros.h>
@@ -39,7 +40,7 @@ void test(
     int num_samples,
     const std::string& chain_start,
     const std::string& chain_end,
-    double timeout,
+    int max_iterations,
     const std::string& urdf_param)
 {
     double eps = 1e-5;
@@ -76,23 +77,11 @@ void test(
     ROS_INFO("joint_min: %zu", joint_min.data.size());
     ROS_INFO("joint_max: %zu", joint_max.data.size());
 
-    TRAC_IK::TRAC_IK tracik_solver(chain, joint_min, joint_max, timeout, eps);
+    TRAC_IK::TRAC_IK tracik_solver(
+            chain, joint_min, joint_max, max_iterations, eps, TRAC_IK::Speed);
 
-    bool valid = tracik_solver.getKDLChain(chain);
-
-    if (!valid) {
-        ROS_ERROR("There was no valid KDL chain found");
-        return;
-    }
-
-    KDL::JntArray ll;
-    KDL::JntArray ul;
-    valid = tracik_solver.getKDLLimits(ll, ul);
-
-    if (!valid) {
-        ROS_ERROR("There were no valid KDL joint limits found");
-        return;
-    }
+    auto& ll = tracik_solver.getLowerLimits();
+    auto& ul = tracik_solver.getUpperLimits();
 
     assert(chain.getNrOfJoints() == ll.data.size());
     assert(chain.getNrOfJoints() == ul.data.size());
@@ -100,7 +89,7 @@ void test(
     // Set up KDL IK
     KDL::ChainFkSolverPos_recursive fk_solver(chain); // Forward kin. solver
     KDL::ChainIkSolverVel_pinv vik_solver(chain); // PseudoInverse vel solver
-    KDL::ChainIkSolverPos_NR_JL kdl_solver(chain, ll, ul, fk_solver, vik_solver, 1, eps); // Joint Limit Solver
+    KDL::ChainIkSolverPos_NR_JL kdl_solver(chain, ll, ul, fk_solver, vik_solver, max_iterations, eps); // Joint Limit Solver
     // 1 iteration per solve (will wrap in timed loop to compare with TRAC-IK)
 
     ////////////////////////////////////////////////////////////////////////
@@ -120,19 +109,14 @@ void test(
     std::vector<KDL::JntArray> position_samples;
     KDL::JntArray q(chain.getNrOfJoints());
 
-    for (uint i = 0; i < num_samples; ++i) {
+    for (int i = 0; i < num_samples; ++i) {
         for (uint j = 0; j < ll.data.size(); ++j) {
             q(j) = TRAC_IK::fRand(ll(j), ul(j));
         }
         position_samples.push_back(q);
     }
 
-    boost::posix_time::ptime start_time;
-    boost::posix_time::time_duration diff;
-
     KDL::JntArray result;
-    KDL::Frame end_effector_pose;
-    int rc;
 
     double total_time = 0.0;
     int success = 0;
@@ -142,21 +126,23 @@ void test(
     int tens = -1;
 
     for (int i = 0; i < num_samples; i++) {
+        KDL::Frame end_effector_pose;
         fk_solver.JntToCart(position_samples[i], end_effector_pose);
-        double elapsed = 0;
-        result = nominal; // start with nominal
-        start_time = boost::posix_time::microsec_clock::local_time();
-        do {
-            q = result; // when iterating start with last solution
-            rc = kdl_solver.CartToJnt(q, end_effector_pose,result);
-            diff = boost::posix_time::microsec_clock::local_time() - start_time;
-            elapsed = diff.total_nanoseconds() / 1e9;
-        } while (rc < 0 && elapsed < timeout);
-        total_time += elapsed;
+
+        auto before = std::chrono::high_resolution_clock::now();
+        int rc = kdl_solver.CartToJnt(nominal, end_effector_pose, result);
+        auto after = std::chrono::high_resolution_clock::now();
+
+        // accumulate time taken
+        auto diff = std::chrono::duration<double>(after - before);
+        total_time += diff.count();
+
+        // count success
         if (rc >= 0) {
             ++success;
         }
 
+        // log progress
         int new_tens = i * 10 / num_samples;
         if (new_tens != tens) {
             ROS_INFO_STREAM(i * 100 / num_samples << "\% done");
@@ -164,23 +150,25 @@ void test(
         }
     }
 
-    tens = -1;
-
     ROS_INFO_STREAM("KDL found " << success << " solutions (" << 100.0 * success / num_samples << "\%) with an average of " << total_time / num_samples << " secs per sample");
 
+    tens = -1;
     total_time = 0.0;
     success = 0;
 
     ROS_INFO_STREAM("*** Testing TRAC-IK with " << num_samples << " random samples");
 
     for (int i = 0; i < num_samples; i++) {
+        KDL::Frame end_effector_pose;
         fk_solver.JntToCart(position_samples[i], end_effector_pose);
-        double elapsed = 0;
-        start_time = boost::posix_time::microsec_clock::local_time();
-        rc = tracik_solver.CartToJnt(nominal, end_effector_pose, result);
-        diff = boost::posix_time::microsec_clock::local_time() - start_time;
-        elapsed = diff.total_nanoseconds() / 1e9;
-        total_time += elapsed;
+
+        auto before = std::chrono::high_resolution_clock::now();
+        int rc = tracik_solver.CartToJnt(nominal, end_effector_pose, result);
+        auto after = std::chrono::high_resolution_clock::now();
+
+        auto diff = std::chrono::duration<double>(after - before);
+        total_time += diff.count();
+
         if (rc >= 0) {
             success++;
         }
@@ -205,7 +193,7 @@ int main(int argc, char** argv)
     std::string chain_start;
     std::string chain_end;
     std::string urdf_param;
-    double timeout;
+    int max_iterations;
 
     nh.param("num_samples", num_samples, 1000);
     nh.param("chain_start", chain_start, std::string(""));
@@ -216,14 +204,14 @@ int main(int argc, char** argv)
         exit (-1);
     }
 
-    nh.param("timeout", timeout, 0.005);
+    nh.param("max_iterations", max_iterations, 100);
     nh.param("urdf_param", urdf_param, std::string("/robot_description"));
 
     if (num_samples < 1) {
         num_samples = 1;
     }
 
-    test(nh, num_samples, chain_start, chain_end, timeout, urdf_param);
+    test(nh, num_samples, chain_start, chain_end, max_iterations, urdf_param);
 
     // Useful when you make a script that loops over multiple launch files that test different robot chains
     // std::vector<char *> commandVector;

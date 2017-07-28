@@ -297,7 +297,7 @@ bool TRAC_IKKinematicsPlugin::searchPositionIK(
         in(z) = ik_seed_state[z];
     }
 
-    solver_->setTimeout(timeout);
+//    solver_->setTimeout(timeout);
 
     int rc = solver_->CartToJnt(in, frame, out, bounds_);
 

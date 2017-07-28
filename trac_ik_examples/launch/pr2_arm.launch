@@ -3,7 +3,7 @@
   <arg name="num_samples" default="1000" />
   <arg name="chain_start" default="torso_lift_link" />
   <arg name="chain_end" default="r_wrist_roll_link" />
-  <arg name="timeout" default="0.005" />
+  <arg name="max_iterations" default="100" />
 
   <param name="robot_description" command="$(find xacro)/xacro.py '$(find pr2_description)/robots/pr2.urdf.xacro'" />
 
@@ -12,7 +12,7 @@
     <param name="num_samples" value="$(arg num_samples)"/>
     <param name="chain_start" value="$(arg chain_start)"/>
     <param name="chain_end" value="$(arg chain_end)"/>
-    <param name="timeout" value="$(arg timeout)"/>
+    <param name="max_iterations" value="$(arg max_iterations)"/>
     <param name="urdf_param" value="/robot_description"/>
   </node>
 

@@ -47,24 +47,39 @@ OF THE POSSIBILITY OF SUCH DAMAGE.
 
 namespace TRAC_IK {
 
+inline double JointErr(
+    const KDL::JntArray& q1,
+    const KDL::JntArray& q2)
+{
+    double err = 0;
+    for (uint i = 0; i < q1.data.size(); i++) {
+        err += pow(q1(i) - q2(i), 2);
+    }
+
+    return err;
+}
+
 TRAC_IK::TRAC_IK(
     const KDL::Chain& chain,
     const KDL::JntArray& q_min,
     const KDL::JntArray& q_max,
-    double max_time,
+    int max_iterations,
     double eps,
     SolveType type)
 :
     chain_(chain),
     joint_min_(q_min),
     joint_max_(q_max),
-    eps_(eps),
-    max_time_(max_time),
-    solve_type_(type),
-    bounds_(KDL::Twist::Zero()),
+    joint_types_(),
     jac_solver_(chain),
-    nl_solver_(chain, joint_min_, joint_max_, eps_, NLOPT_IK::SumSq),
-    ik_solver_(chain, joint_min_, joint_max_, eps_, true, true)
+    nl_solver_(chain, q_min, q_max, eps, NLOPT_IK::SumSq),
+    ik_solver_(chain, q_min, q_max, eps, true, true),
+    bounds_(KDL::Twist::Zero()),
+    eps_(eps),
+    solve_type_(type),
+    max_iters_(max_iterations),
+    solutions_(),
+    errors_()
 {
     assert(chain_.getNrOfJoints() == joint_min_.data.size());
     assert(chain_.getNrOfJoints() == joint_max_.data.size());
@@ -286,7 +301,7 @@ int TRAC_IK::CartToJnt(
 
     int solver = SOLVER_NLOPT;
 
-    const int max_iters = 250;
+    const int max_iters = max_iters_;
     for (int i = 0; i < max_iters; ++i) {
         // interleave iterations of kdl and nl opt
         switch (solver) {
@@ -318,14 +333,14 @@ int TRAC_IK::CartToJnt(
                     solutions_.push_back(q_out);
                     double err;
                     switch (solve_type_) {
-                    case Manip1: {
+                    case Manip1:
                         err = manipPenalty(q_out) * TRAC_IK::ManipValue1(q_out);
-                    }   break;
-                    case Manip2: {
+                        break;
+                    case Manip2:
                         err = manipPenalty(q_out) * TRAC_IK::ManipValue2(q_out);
-                       }   break;
+                        break;
                     default:
-                        err = TRAC_IK::JointErr(q_init, q_out);
+                        err = JointErr(q_init, q_out);
                         break;
                     }
 
@@ -379,7 +394,7 @@ int TRAC_IK::CartToJnt(
                         err = manipPenalty(q_out) * TRAC_IK::ManipValue2(q_out);
                         break;
                     default:
-                        err = TRAC_IK::JointErr(q_init, q_out);
+                        err = JointErr(q_init, q_out);
                         break;
                     }
 

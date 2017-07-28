@@ -55,38 +55,17 @@ public:
         const KDL::Chain& _chain,
         const KDL::JntArray& _q_min,
         const KDL::JntArray& _q_max,
-        double _maxtime = 0.005,
+        int max_iters = 100,
         double _eps = 1e-5,
         SolveType _type = Speed);
 
-    // TODO: propagate timeout to underlying solvers
-    void setTimeout(double max_time) { max_time_ = max_time; }
     void setBounds(const KDL::Twist& bounds) { bounds_ = bounds; }
+    const KDL::Twist& getBounds() const { return bounds_; }
 
-    bool getKDLChain(KDL::Chain& chain)
-    {
-        chain = chain_;
-        return true;
-    }
+    const KDL::Chain& getKDLChain(KDL::Chain& chain) const { return chain_; }
 
-    bool getKDLLimits(KDL::JntArray& lb_, KDL::JntArray& ub_)
-    {
-        lb_ = joint_min_;
-        ub_ = joint_max_;
-        return true;
-    }
-
-    static double JointErr(
-        const KDL::JntArray& arr1,
-        const KDL::JntArray& arr2)
-    {
-        double err = 0;
-        for (uint i = 0; i < arr1.data.size(); i++) {
-            err += pow(arr1(i) - arr2(i), 2);
-        }
-
-        return err;
-    }
+    const KDL::JntArray& getLowerLimits() const { return joint_min_; }
+    const KDL::JntArray& getUpperLimits() const { return joint_max_; }
 
     /// Return a negative value if an error was encountered.
     int CartToJnt(
@@ -104,18 +83,15 @@ private:
     KDL::JntArray joint_max_;
     std::vector<KDL::BasicJointType> joint_types_;
 
-    double eps_;
-    double max_time_;
-    SolveType solve_type_;
-
-    KDL::Twist bounds_;
-
     KDL::ChainJntToJacSolver jac_solver_;
 
     NLOPT_IK::NLOPT_IK nl_solver_;
     KDL::ChainIkSolverPos_TL ik_solver_;
 
-    boost::posix_time::ptime start_time_;
+    KDL::Twist bounds_;
+    double eps_;
+    SolveType solve_type_;
+    int max_iters_;
 
     std::vector<KDL::JntArray> solutions_;
     std::vector<std::pair<double, size_t>> errors_;
