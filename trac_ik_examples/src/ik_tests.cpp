@@ -171,6 +171,13 @@ void test(
 
         if (rc >= 0) {
             success++;
+
+            KDL::Frame result_pose;
+            fk_solver.JntToCart(result, result_pose);
+
+            if (!Equal(end_effector_pose, result_pose, 1e-3)) {
+                ROS_WARN_STREAM("Ik is bad and should feel bad (" << end_effector_pose << " vs " << result_pose);
+            }
         }
 
         int new_tens = i * 10 / num_samples;
