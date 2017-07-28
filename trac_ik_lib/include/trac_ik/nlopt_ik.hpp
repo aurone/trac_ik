@@ -81,7 +81,7 @@ public:
     ///
     /// Returns 0 if the solver finds a solution or has already converted to a
     /// solution and a non-zero value otherwise.
-    int step();
+    int step(int steps = 1);
 
     /// Return the current configuration in the solver; the solution
     /// configuration if the solver has converged to a solution.

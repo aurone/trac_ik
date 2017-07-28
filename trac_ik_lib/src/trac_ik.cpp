@@ -364,7 +364,7 @@ int TRAC_IK::CartToJnt(
         }   break;
         case SOLVER_NLOPT: {
             auto before = std::chrono::high_resolution_clock::now();
-            int rc =  nl_solver_.step();
+            int rc =  nl_solver_.step(10);
             auto after = std::chrono::high_resolution_clock::now();
             ROS_DEBUG_THROTTLE(1.0, "nlopt step took %f seconds", std::chrono::duration<double>(after - before).count());
             if (rc == 0) {

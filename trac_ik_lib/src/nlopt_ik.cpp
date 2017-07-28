@@ -418,8 +418,6 @@ void NLOPT_IK::restart(
     default:
         break;
     }
-
-    nlopt_.set_maxeval(10);
 }
 
 void NLOPT_IK::restart(const KDL::JntArray& q_init)
@@ -427,8 +425,10 @@ void NLOPT_IK::restart(const KDL::JntArray& q_init)
     restart(q_init, f_target_);
 }
 
-int NLOPT_IK::step()
+int NLOPT_IK::step(int steps)
 {
+    nlopt_.set_maxeval(steps);
+
     if (!valid_) {
         ROS_ERROR_THROTTLE(1.0, "NLOpt_IK can only be run for chains of length 2 or more");
         return -3;
