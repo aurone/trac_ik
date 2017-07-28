@@ -314,7 +314,7 @@ int TRAC_IK::CartToJnt(
             auto after = std::chrono::high_resolution_clock::now();
             ROS_DEBUG_THROTTLE(1.0, "kdl step took %f seconds", std::chrono::duration<double>(after - before).count());
             if (rc == 0) {
-                ROS_DEBUG("KDL found solution on iteration %d", i);
+                ROS_DEBUG_NAMED("trac_ik", "KDL found solution on iteration %d", i);
 
                 q_out = ik_solver_.qout();
 
@@ -355,7 +355,7 @@ int TRAC_IK::CartToJnt(
                 randomize(seed_, q_init);
                 ik_solver_.restart(seed_);
             } else if (rc == 2) {
-                ROS_DEBUG("kdl encountered local minima -> reseed");
+                ROS_DEBUG_NAMED("trac_ik", "kdl encountered local minima -> reseed");
                 randomize(seed_, q_init);
                 ik_solver_.restart(seed_);
             }
@@ -368,7 +368,7 @@ int TRAC_IK::CartToJnt(
             auto after = std::chrono::high_resolution_clock::now();
             ROS_DEBUG_THROTTLE(1.0, "nlopt step took %f seconds", std::chrono::duration<double>(after - before).count());
             if (rc == 0) {
-                ROS_DEBUG("NLOPT found solution on iteration %d", i);
+                ROS_DEBUG_NAMED("trac_ik", "NLOPT found solution on iteration %d", i);
 
                 q_out = nl_solver_.qout();
 
@@ -411,7 +411,7 @@ int TRAC_IK::CartToJnt(
             solver = SOLVER_KDL;
         }   break;
         default: {
-            ROS_ERROR("Unknown solver type");
+            ROS_ERROR_NAMED("trac_ik", "Unknown solver type");
             assert(0);
         }   break;
         }
