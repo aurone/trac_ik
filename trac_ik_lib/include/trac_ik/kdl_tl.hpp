@@ -31,6 +31,10 @@ OF THE POSSIBILITY OF SUCH DAMAGE.
 #ifndef KDLCHAINIKSOLVERPOS_TL_HPP
 #define KDLCHAINIKSOLVERPOS_TL_HPP
 
+// standard includes
+#include <random>
+
+// system includes
 #include <kdl/chainfksolverpos_recursive.hpp>
 #include <kdl/chainiksolvervel_pinv.hpp>
 
@@ -96,6 +100,8 @@ private:
     JntArray joint_min_;
     JntArray joint_max_;
     std::vector<KDL::BasicJointType> joint_types_;
+
+    std::default_random_engine rng_;
 
     KDL::ChainIkSolverVel_pinv vik_solver_;
     KDL::ChainFkSolverPos_recursive fk_solver_;

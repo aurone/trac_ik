@@ -109,9 +109,12 @@ void test(
     std::vector<KDL::JntArray> position_samples;
     KDL::JntArray q(chain.getNrOfJoints());
 
+    std::default_random_engine rng;
+
     for (int i = 0; i < num_samples; ++i) {
         for (uint j = 0; j < ll.data.size(); ++j) {
-            q(j) = TRAC_IK::fRand(ll(j), ul(j));
+            std::uniform_real_distribution<double> dist(ll(j), ul(j));
+            q(j) = dist(rng);
         }
         position_samples.push_back(q);
     }

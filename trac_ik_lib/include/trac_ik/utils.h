@@ -29,12 +29,6 @@ bool InitKDLChain(
     KDL::JntArray& joint_min,
     KDL::JntArray& joint_max);
 
-inline double fRand(double min, double max)
-{
-    double f = (double) rand() / RAND_MAX;
-    return min + f * (max - min);
-}
-
 } // namespace TRAC_IK
 
 namespace KDL {

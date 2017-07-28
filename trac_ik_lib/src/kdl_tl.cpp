@@ -259,9 +259,13 @@ void ChainIkSolverPos_TL::randomize(KDL::JntArray& q)
 {
     for (size_t j = 0; j < q.data.size(); ++j) {
         if (joint_types_[j] == KDL::BasicJointType::Continuous) {
-            q(j) = TRAC_IK::fRand(q(j) - 2.0 * M_PI, q(j) + 2.0 * M_PI);
+            std::uniform_real_distribution<double> dist(
+                    q(j) - 2.0 * M_PI, q(j) + 2.0 * M_PI);
+            q(j) = dist(rng_);
         } else {
-            q(j) = TRAC_IK::fRand(joint_min_(j), joint_max_(j));
+            std::uniform_real_distribution<double> dist(
+                    joint_min_(j), joint_max_(j));
+            q(j) = dist(rng_);
         }
     }
 }

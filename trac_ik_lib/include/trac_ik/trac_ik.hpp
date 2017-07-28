@@ -31,11 +31,14 @@ OF THE POSSIBILITY OF SUCH DAMAGE.
 #ifndef TRAC_IK_HPP
 #define TRAC_IK_HPP
 
-#include <trac_ik/nlopt_ik.hpp>
+// standard includes
+#include <random>
+
+// system includes
 #include <kdl/chainjnttojacsolver.hpp>
-#include <boost/thread.hpp>
-#include <boost/asio.hpp>
-#include <boost/scoped_ptr.hpp>
+
+// project includes
+#include <trac_ik/nlopt_ik.hpp>
 
 namespace TRAC_IK {
 
@@ -83,6 +86,8 @@ private:
     KDL::JntArray joint_max_;
     std::vector<KDL::BasicJointType> joint_types_;
 
+    std::default_random_engine rng_;
+
     KDL::ChainJntToJacSolver jac_solver_;
 
     NLOPT_IK::NLOPT_IK nl_solver_;
@@ -98,7 +103,7 @@ private:
 
     KDL::JntArray seed_;
 
-    void randomize(KDL::JntArray& q, const KDL::JntArray& q_init) const;
+    void randomize(KDL::JntArray& q, const KDL::JntArray& q_init);
     void normalize_seed(const KDL::JntArray& seed, KDL::JntArray& solution);
     void normalize_limits(const KDL::JntArray& seed, KDL::JntArray& solution);
 
