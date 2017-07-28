@@ -76,7 +76,7 @@ public:
     ///
     /// Returns 0 if the solver has already converged to a solution and a
     /// non-zero value otherwise.
-    int step();
+    int step(int steps = 1);
 
     ///@}
 
@@ -115,6 +115,8 @@ private:
 
     // next joint positions
     KDL::JntArray *q_next_;
+
+    bool done_;
 
     KDL::Frame f_curr_;
     KDL::JntArray delta_q_;

@@ -63,7 +63,8 @@ ChainIkSolverPos_TL::ChainIkSolverPos_TL(
     q_buff2_(chain_.getNrOfJoints()),
     q_curr_(&q_buff1_),
     q_next_(&q_buff2_),
-    delta_q_(chain.getNrOfJoints())
+    delta_q_(chain.getNrOfJoints()),
+    done_(true)
 {
     assert(chain_.getNrOfJoints() == joint_min.data.size());
     assert(chain_.getNrOfJoints() == joint_max.data.size());
@@ -118,125 +119,136 @@ void ChainIkSolverPos_TL::restart(
     const KDL::Frame& p_in)
 {
     *q_curr_ = q_init;
+    fk_solver_.JntToCart(*q_curr_, f_curr_);
     f_target_ = p_in;
+    done_ = false;
 }
 
 void ChainIkSolverPos_TL::restart(const KDL::JntArray& q_init)
 {
     *q_curr_ = q_init;
+    fk_solver_.JntToCart(*q_curr_, f_curr_);
+    done_ = false;
 }
 
-int ChainIkSolverPos_TL::step()
+int ChainIkSolverPos_TL::step(int steps)
 {
-    // update tip frame
-    fk_solver_.JntToCart(*q_curr_, f_curr_);
-
-    KDL::Twist delta_twist = diffRelative(f_target_, f_curr_);
-
-    if (std::abs(delta_twist.vel.x()) <= std::abs(bounds_.vel.x())) {
-        delta_twist.vel.x(0);
-    }
-
-    if (std::abs(delta_twist.vel.y()) <= std::abs(bounds_.vel.y())) {
-        delta_twist.vel.y(0);
-    }
-
-    if (std::abs(delta_twist.vel.z()) <= std::abs(bounds_.vel.z())) {
-        delta_twist.vel.z(0);
-    }
-
-    if (std::abs(delta_twist.rot.x()) <= std::abs(bounds_.rot.x())) {
-        delta_twist.rot.x(0);
-    }
-
-    if (std::abs(delta_twist.rot.y()) <= std::abs(bounds_.rot.y())) {
-        delta_twist.rot.y(0);
-    }
-
-    if (std::abs(delta_twist.rot.z()) <= std::abs(bounds_.rot.z())) {
-        delta_twist.rot.z(0);
-    }
-
-    if (Equal(delta_twist, Twist::Zero(), eps_)) {
+    if (done_) {
         return 0;
     }
 
-    delta_twist = diff(f_curr_, f_target_);
+    for (int i = 0; i < steps; ++i) {
+        KDL::Twist delta_twist = diff(f_curr_, f_target_);
 
-    vik_solver_.CartToJnt(*q_curr_, delta_twist, delta_q_);
+        vik_solver_.CartToJnt(*q_curr_, delta_twist, delta_q_);
 
-    // apply delta to get the next configuration
-    Add(*q_curr_, delta_q_, *q_next_);
+        // apply delta to get the next configuration
+        Add(*q_curr_, delta_q_, *q_next_);
 
-    // handle minimum variable bound
-    for (size_t j = 0; j < joint_min_.data.size(); j++) {
-        if (joint_types_[j] == KDL::BasicJointType::Continuous) {
-            continue;
-        }
-        if ((*q_next_)(j) < joint_min_(j)) {
-            if (!wrap_ || joint_types_[j] == KDL::BasicJointType::TransJoint) {
-                // KDL's default
-                (*q_next_)(j) = joint_min_(j);
-            } else {
-                // Find actual wrapped angle between limit and joint
-                double diffangle = fmod(joint_min_(j) - (*q_next_)(j), 2 * M_PI);
-                // Subtract that angle from limit and go into the range by a
-                // revolution
-                double curr_angle = joint_min_(j) - diffangle + 2 * M_PI;
-                if (curr_angle > joint_max_(j)) {
+        // handle minimum variable bound
+        for (size_t j = 0; j < joint_min_.data.size(); ++j) {
+            if (joint_types_[j] == KDL::BasicJointType::Continuous) {
+                continue;
+            }
+            if ((*q_next_)(j) < joint_min_(j)) {
+                if (!wrap_ || joint_types_[j] == KDL::BasicJointType::TransJoint) {
+                    // KDL's default
                     (*q_next_)(j) = joint_min_(j);
                 } else {
-                    (*q_next_)(j) = curr_angle;
+                    // Find actual wrapped angle between limit and joint
+                    double diffangle = fmod(joint_min_(j) - (*q_next_)(j), 2 * M_PI);
+                    // Subtract that angle from limit and go into the range by a
+                    // revolution
+                    double curr_angle = joint_min_(j) - diffangle + 2 * M_PI;
+                    if (curr_angle > joint_max_(j)) {
+                        (*q_next_)(j) = joint_min_(j);
+                    } else {
+                        (*q_next_)(j) = curr_angle;
+                    }
                 }
             }
         }
-    }
 
-    // handle maximum variable bound
-    for (size_t j = 0; j < joint_max_.data.size(); j++) {
-        if (joint_types_[j] == KDL::BasicJointType::Continuous) {
-            continue;
-        }
+        // handle maximum variable bound
+        for (size_t j = 0; j < joint_max_.data.size(); ++j) {
+            if (joint_types_[j] == KDL::BasicJointType::Continuous) {
+                continue;
+            }
 
-        if ((*q_next_)(j) > joint_max_(j)) {
-            if (!wrap_ || joint_types_[j] == KDL::BasicJointType::TransJoint) {
-                // KDL's default
-                (*q_next_)(j) = joint_max_(j);
-            } else {
-                // Find actual wrapped angle between limit and joint
-                double diffangle = fmod((*q_next_)(j) - joint_max_(j), 2 * M_PI);
-                // Add that angle to limit and go into the range by a revolution
-                double curr_angle = joint_max_(j) + diffangle - 2 * M_PI;
-                if (curr_angle < joint_min_(j)) {
+            if ((*q_next_)(j) > joint_max_(j)) {
+                if (!wrap_ || joint_types_[j] == KDL::BasicJointType::TransJoint) {
+                    // KDL's default
                     (*q_next_)(j) = joint_max_(j);
                 } else {
-                    (*q_next_)(j) = curr_angle;
+                    // Find actual wrapped angle between limit and joint
+                    double diffangle = fmod((*q_next_)(j) - joint_max_(j), 2 * M_PI);
+                    // Add that angle to limit and go into the range by a revolution
+                    double curr_angle = joint_max_(j) + diffangle - 2 * M_PI;
+                    if (curr_angle < joint_min_(j)) {
+                        (*q_next_)(j) = joint_max_(j);
+                    } else {
+                        (*q_next_)(j) = curr_angle;
+                    }
                 }
             }
         }
-    }
 
-    // store the actually-moved delta in q_curr_
-    Subtract(*q_curr_, *q_next_, *q_curr_);
+        // store the actually-moved delta in q_curr_
+        Subtract(*q_curr_, *q_next_, *q_curr_);
 
-    if (q_curr_->data.isZero(boost::math::tools::epsilon<float>())) {
-        if (rr_) {
-            std::swap(q_curr_, q_next_);
-            return 2;
+        if (q_curr_->data.isZero(boost::math::tools::epsilon<float>())) {
+            if (rr_) {
+                std::swap(q_curr_, q_next_);
+                return 2;
+            }
+
+            // Below would be an optimization to the normal KDL, where when it
+            // gets stuck, it returns immediately.  Don't use to compare KDL with
+            // random restarts or TRAC-IK to plain KDL.
+
+            // else {
+            //   q_out=q_curr;
+            //   return -3;
+            // }
         }
 
-        // Below would be an optimization to the normal KDL, where when it
-        // gets stuck, it returns immediately.  Don't use to compare KDL with
-        // random restarts or TRAC-IK to plain KDL.
+        // update the current configuration
+        std::swap(q_curr_, q_next_);
 
-        // else {
-        //   q_out=q_curr;
-        //   return -3;
-        // }
+        // update tip frame
+        fk_solver_.JntToCart(*q_curr_, f_curr_);
+
+        delta_twist = diffRelative(f_target_, f_curr_);
+
+        if (std::abs(delta_twist.vel.x()) <= std::abs(bounds_.vel.x())) {
+            delta_twist.vel.x(0);
+        }
+
+        if (std::abs(delta_twist.vel.y()) <= std::abs(bounds_.vel.y())) {
+            delta_twist.vel.y(0);
+        }
+
+        if (std::abs(delta_twist.vel.z()) <= std::abs(bounds_.vel.z())) {
+            delta_twist.vel.z(0);
+        }
+
+        if (std::abs(delta_twist.rot.x()) <= std::abs(bounds_.rot.x())) {
+            delta_twist.rot.x(0);
+        }
+
+        if (std::abs(delta_twist.rot.y()) <= std::abs(bounds_.rot.y())) {
+            delta_twist.rot.y(0);
+        }
+
+        if (std::abs(delta_twist.rot.z()) <= std::abs(bounds_.rot.z())) {
+            delta_twist.rot.z(0);
+        }
+
+        if (Equal(delta_twist, Twist::Zero(), eps_)) {
+            done_ = true;
+            return 0;
+        }
     }
-
-    // update the current configuration
-    std::swap(q_curr_, q_next_);
 
     return 1;
 }
