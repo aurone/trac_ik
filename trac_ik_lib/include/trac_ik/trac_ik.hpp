@@ -65,6 +65,8 @@ public:
     void setBounds(const KDL::Twist& bounds);
     const KDL::Twist& getBounds() const { return bounds_; }
 
+    void setMaxIterations(int max_iters) { max_iters_ = max_iters; }
+
     const KDL::Chain& getKDLChain(KDL::Chain& chain) const { return chain_; }
 
     const KDL::JntArray& getLowerLimits() const { return joint_min_; }

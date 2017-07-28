@@ -107,7 +107,7 @@ bool TRAC_IKKinematicsPlugin::initialize(
     const double epsilon = 1e-5;
 
     solver_.reset(new TRAC_IK::TRAC_IK(
-            chain_, joint_min_, joint_max_, 0.0, epsilon, solve_type_));
+            chain_, joint_min_, joint_max_, 1000, epsilon, solve_type_));
 
     active_ = true;
     return true;
@@ -293,11 +293,11 @@ bool TRAC_IKKinematicsPlugin::searchPositionIK(
     KDL::JntArray in(chain_.getNrOfJoints());
     KDL::JntArray out(chain_.getNrOfJoints());
 
-    for (uint z = 0; z < chain_.getNrOfJoints(); z++) {
+    for (unsigned int z = 0; z < chain_.getNrOfJoints(); ++z) {
         in(z) = ik_seed_state[z];
     }
 
-//    solver_->setTimeout(timeout);
+    solver_->setMaxIterations(timeout * iter_per_time_);
 
     int rc = solver_->CartToJnt(in, frame, out, bounds_);
 
@@ -308,7 +308,7 @@ bool TRAC_IKKinematicsPlugin::searchPositionIK(
 
     solution.resize(chain_.getNrOfJoints());
 
-    for (uint z = 0; z < chain_.getNrOfJoints(); z++) {
+    for (unsigned int z = 0; z < chain_.getNrOfJoints(); z++) {
         solution[z] = out(z);
     }
 

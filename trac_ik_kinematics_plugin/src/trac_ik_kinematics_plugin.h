@@ -45,7 +45,8 @@ public:
     TRAC_IKKinematicsPlugin() :
         active_(false),
         position_ik_(false),
-        solve_type_(TRAC_IK::Speed)
+        solve_type_(TRAC_IK::Speed),
+        iter_per_time_(1500 / 0.005)
     { }
 
     ~TRAC_IKKinematicsPlugin() { }
@@ -172,11 +173,11 @@ public:
 
 private:
 
-    std::vector<std::string> joint_names_;
+    KDL::Chain chain_;
     std::vector<std::string> link_names_;
+    std::vector<std::string> joint_names_;
     KDL::JntArray joint_min_;
     KDL::JntArray joint_max_;
-    KDL::Chain chain_;
 
     KDL::Twist bounds_;
 
@@ -187,6 +188,8 @@ private:
     TRAC_IK::SolveType solve_type_;
 
     std::unique_ptr<TRAC_IK::TRAC_IK> solver_;
+
+    double iter_per_time_;
 
     const std::vector<std::string>& getJointNames() const {
         return joint_names_;
