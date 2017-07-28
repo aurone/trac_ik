@@ -59,7 +59,7 @@ public:
         double _eps = 1e-5,
         SolveType _type = Speed);
 
-    void setBounds(const KDL::Twist& bounds) { bounds_ = bounds; }
+    void setBounds(const KDL::Twist& bounds);
     const KDL::Twist& getBounds() const { return bounds_; }
 
     const KDL::Chain& getKDLChain(KDL::Chain& chain) const { return chain_; }
@@ -95,6 +95,8 @@ private:
 
     std::vector<KDL::JntArray> solutions_;
     std::vector<std::pair<double, size_t>> errors_;
+
+    KDL::JntArray seed_;
 
     void randomize(KDL::JntArray& q, const KDL::JntArray& q_init) const;
     void normalize_seed(const KDL::JntArray& seed, KDL::JntArray& solution);

@@ -79,7 +79,8 @@ TRAC_IK::TRAC_IK(
     solve_type_(type),
     max_iters_(max_iterations),
     solutions_(),
-    errors_()
+    errors_(),
+    seed_(chain.getNrOfJoints())
 {
     assert(chain_.getNrOfJoints() == joint_min_.data.size());
     assert(chain_.getNrOfJoints() == joint_max_.data.size());
@@ -100,6 +101,13 @@ TRAC_IK::TRAC_IK(
     }
 
     assert(joint_types_.size() == joint_min_.data.size());
+}
+
+void TRAC_IK::setBounds(const KDL::Twist& bounds)
+{
+    bounds_ = bounds;
+    nl_solver_.setBounds(bounds);
+    ik_solver_.setBounds(bounds);
 }
 
 bool TRAC_IK::unique_solution(const KDL::JntArray& sol)
@@ -171,10 +179,7 @@ void TRAC_IK::normalize_seed(
     // Make sure rotational joint values are within 1 revolution of seed; then
     // ensure joint limits are met.
 
-    bool improved = false;
-
     for (uint i = 0; i < joint_min_.data.size(); i++) {
-
         if (joint_types_[i] == KDL::BasicJointType::TransJoint) {
             continue;
         }
@@ -202,10 +207,7 @@ void TRAC_IK::normalize_limits(
     // Make sure rotational joint values are within 1 revolution of middle of
     // limits; then ensure joint limits are met.
 
-    bool improved = false;
-
     for (uint i = 0; i < joint_min_.data.size(); i++) {
-
         if (joint_types_[i] == KDL::BasicJointType::TransJoint) {
             continue;
         }
@@ -231,7 +233,6 @@ void TRAC_IK::normalize_limits(
 
         solution(i) = val;
     }
-
 }
 
 double TRAC_IK::manipPenalty(const KDL::JntArray& arr)
@@ -287,10 +288,12 @@ int TRAC_IK::CartToJnt(
     ik_solver_.setBounds(bounds);
     nl_solver_.setBounds(bounds);
 
-    KDL::JntArray seed = q_init; // TODO: cache tmp
+    for (unsigned int jidx = 0; jidx < chain_.getNrOfJoints(); ++jidx) {
+        seed_(jidx) = q_init(jidx);
+    }
 
-    ik_solver_.restart(seed, p_in);
-    nl_solver_.restart(seed, p_in);
+    ik_solver_.restart(seed_, p_in);
+    nl_solver_.restart(seed_, p_in);
 
     enum Solver {
         SOLVER_KDL,
@@ -349,12 +352,12 @@ int TRAC_IK::CartToJnt(
 
                 // sample a new random seed to search for additional solutions
                 // on successive iterations
-                randomize(seed, q_init);
-                ik_solver_.restart(seed);
+                randomize(seed_, q_init);
+                ik_solver_.restart(seed_);
             } else if (rc == 2) {
                 ROS_DEBUG("kdl encountered local minima -> reseed");
-                randomize(seed, q_init);
-                ik_solver_.restart(seed);
+                randomize(seed_, q_init);
+                ik_solver_.restart(seed_);
             }
 
             solver = SOLVER_NLOPT;
@@ -401,8 +404,8 @@ int TRAC_IK::CartToJnt(
                     errors_.emplace_back(err, solutions_.size() - 1);
                 }
 
-                randomize(seed, q_init);
-                nl_solver_.restart(seed);
+                randomize(seed_, q_init);
+                nl_solver_.restart(seed_);
             }
 
             solver = SOLVER_KDL;

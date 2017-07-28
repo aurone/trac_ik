@@ -145,7 +145,7 @@ void test(
         // log progress
         int new_tens = i * 10 / num_samples;
         if (new_tens != tens) {
-            ROS_INFO_STREAM(i * 100 / num_samples << "\% done");
+            ROS_DEBUG("%d%% done", i * 100 / num_samples);
             tens = new_tens;
         }
     }
@@ -175,7 +175,7 @@ void test(
 
         int new_tens = i * 10 / num_samples;
         if (new_tens != tens) {
-            ROS_INFO_STREAM(i * 100 / num_samples << "\% done");
+            ROS_DEBUG("%d%% done", i * 100 / num_samples);
             tens = new_tens;
         }
     }

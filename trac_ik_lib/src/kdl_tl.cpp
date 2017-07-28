@@ -117,14 +117,12 @@ void ChainIkSolverPos_TL::restart(
     const KDL::JntArray& q_init,
     const KDL::Frame& p_in)
 {
-    ROS_DEBUG_STREAM("kdl restart. q_init = " << q_init << ", p_in = " << p_in);
     *q_curr_ = q_init;
     f_target_ = p_in;
 }
 
 void ChainIkSolverPos_TL::restart(const KDL::JntArray& q_init)
 {
-    ROS_DEBUG_STREAM("kdl restart pose. q_init = " << q_init);
     *q_curr_ = q_init;
 }
 

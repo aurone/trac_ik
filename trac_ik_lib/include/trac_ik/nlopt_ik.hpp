@@ -34,6 +34,7 @@ OF THE POSSIBILITY OF SUCH DAMAGE.
 // system includes
 #include <nlopt.hpp>
 
+// project includes
 #include <trac_ik/dual_quaternion.h>
 #include <trac_ik/kdl_tl.hpp>
 
@@ -87,6 +88,13 @@ public:
     const KDL::JntArray& qout() const;
     ///@}
 
+    /// User command to start an IK solve. Takes in a seed configuration, a
+    /// Cartesian pose, and (optional) a desired configuration. If the desired
+    /// is not provided, the seed is used. Outputs the joint configuration found
+    /// that solves the IK.
+    ///
+    /// \return -3 if a configuration could not be found within the eps set up
+    /// in the constructor and 1 if a solution was found
     int CartToJnt(
         const KDL::JntArray& q_init,
         const KDL::Frame& p_in,
@@ -104,12 +112,15 @@ public:
     // minimization objective for OptType::SumSq and equality constraint of
     // OptType::Joint.
     void cartSumSquaredError(const std::vector<double>& x, double error[]);
+    void cartSumSquaredError(const double* x, double error[]);
 
     // minimization objective for OptType::DualQuat.
     void cartDQError(const std::vector<double>& x, double error[]);
 
     // minimization objective for OptType::L2.
     void cartL2NormError(const std::vector<double>& x, double error[]);
+
+    std::vector<double> tmp_;
 
 private:
 
@@ -134,6 +145,8 @@ private:
 
     std::vector<double> best_x_;
     KDL::JntArray q_out_;
+
+    KDL::JntArray q_tmp_;
 
     // -3 for in-progress, reset in restart()
     // 1 for found solution

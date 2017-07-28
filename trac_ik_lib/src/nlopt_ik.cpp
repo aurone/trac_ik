@@ -96,13 +96,16 @@ double minfuncDQ(
 {
     NLOPT_IK* c = (NLOPT_IK*)data;
 
-    std::vector<double> vals(x);
-
-    double jump = boost::math::tools::epsilon<float>();
     double result[1];
-    c->cartDQError(vals, result);
+    c->cartDQError(x, result);
 
     if (!grad.empty()) {
+        auto& vals = c->tmp_;
+        std::copy(begin(x), end(x), begin(vals));
+
+        const double jump = boost::math::tools::epsilon<float>();
+        const double oot_jump = 1.0 / (2.0 * jump);
+
         double v1[1];
         for (uint i = 0; i < x.size(); i++) {
             double original = vals[i];
@@ -111,7 +114,7 @@ double minfuncDQ(
             c->cartDQError(vals, v1);
 
             vals[i] = original;
-            grad[i] = (v1[0] - result[0]) / (2 * jump);
+            grad[i] = (v1[0] - result[0]) * oot_jump;
         }
     }
 
@@ -127,13 +130,16 @@ double minfuncSumSquared(
 {
     NLOPT_IK* c = (NLOPT_IK*)data;
 
-    std::vector<double> vals(x);
-
-    double jump = boost::math::tools::epsilon<float>();
     double result[1];
-    c->cartSumSquaredError(vals, result);
+    c->cartSumSquaredError(x, result);
 
     if (!grad.empty()) {
+        auto& vals = c->tmp_;
+        std::copy(begin(x), end(x), begin(vals));
+
+        const double jump = boost::math::tools::epsilon<float>();
+        const double oot_jump = 1.0 / (2.0 * jump);
+
         double v1[1];
         for (uint i = 0; i < x.size(); i++) {
             double original = vals[i];
@@ -142,7 +148,7 @@ double minfuncSumSquared(
             c->cartSumSquaredError(vals, v1);
 
             vals[i] = original;
-            grad[i] = (v1[0] - result[0]) / (2.0 * jump);
+            grad[i] = (v1[0] - result[0]) * oot_jump;
         }
     }
 
@@ -160,13 +166,16 @@ double minfuncL2(
 {
     NLOPT_IK* c = (NLOPT_IK*)data;
 
-    std::vector<double> vals(x);
-
-    double jump = boost::math::tools::epsilon<float>();
     double result[1];
-    c->cartL2NormError(vals, result);
+    c->cartL2NormError(x, result);
 
     if (!grad.empty()) {
+        auto& vals = c->tmp_;
+        std::copy(begin(x), end(x), begin(vals));
+
+        const double jump = boost::math::tools::epsilon<float>();
+        const double oot_jump = 1.0 / (2.0 * jump);
+
         double v1[1];
         for (uint i = 0; i < x.size(); i++) {
             double original = vals[i];
@@ -175,7 +184,7 @@ double minfuncL2(
             c->cartL2NormError(vals, v1);
 
             vals[i] = original;
-            grad[i] = (v1[0] - result[0]) / (2.0 * jump);
+            grad[i] = (v1[0] - result[0]) * oot_jump;
         }
     }
 
@@ -195,17 +204,15 @@ void constrainfuncm(
 {
     NLOPT_IK* c = (NLOPT_IK*)data;
 
-    std::vector<double> vals(n);
-
-    for (uint i = 0; i < n; i++) {
-        vals[i] = x[i];
-    }
-
-    double jump = boost::math::tools::epsilon<float>();
-
-    c->cartSumSquaredError(vals, result);
+    c->cartSumSquaredError(x, result);
 
     if (grad != NULL) {
+        auto& vals = c->tmp_;
+        std::copy(x, x + n, begin(vals));
+
+        const double jump = boost::math::tools::epsilon<float>();
+        const double oot_jump = 1.0 / (2.0 * jump);
+
         std::vector<double> v1(m);
         for (uint i = 0; i < n; i++) {
             double o = vals[i];
@@ -213,7 +220,7 @@ void constrainfuncm(
             c->cartSumSquaredError(vals, v1.data());
             vals[i] = o;
             for (uint j = 0; j < m; j++) {
-                grad[j * n + i] = (v1[j] - result[j]) / (2 * jump);
+                grad[j * n + i] = (v1[j] - result[j]) * oot_jump;
             }
         }
     }
@@ -240,7 +247,9 @@ NLOPT_IK::NLOPT_IK(
     x_min_(chain.getNrOfJoints()),
     x_max_(chain.getNrOfJoints()),
     opt_type_(_type),
-    q_out_(chain.getNrOfJoints())
+    q_out_(chain.getNrOfJoints()),
+    tmp_(chain.getNrOfJoints()),
+    q_tmp_(chain.getNrOfJoints())
 {
     /////////////////////////////////////
     // Initialize KDL Chain Properties //
@@ -265,8 +274,7 @@ NLOPT_IK::NLOPT_IK(
         if (type.find("Rot") != std::string::npos) {
             if (q_max(types_.size()) >= std::numeric_limits<float>::max() && q_min(types_.size()) <= std::numeric_limits<float>::lowest()) {
                 types_.push_back(KDL::BasicJointType::Continuous);
-            }
-            else {
+            } else {
                 types_.push_back(KDL::BasicJointType::RotJoint);
             }
         } else if (type.find("Trans") != std::string::npos) {
@@ -358,23 +366,21 @@ void NLOPT_IK::restart(
 
     for (size_t i = 0; i < joint_min_.size(); i++) {
         if (types_[i] == KDL::BasicJointType::Continuous) {
-            x_min_[i] = best_x_[i] - 2 * M_PI;
+            x_min_[i] = best_x_[i] - 2.0 * M_PI;
         } else if (types_[i] == KDL::BasicJointType::TransJoint) {
             x_min_[i] = joint_min_[i];
         } else {
-            x_min_[i] = std::max(joint_min_[i], best_x_[i] - 2 * M_PI);
+            x_min_[i] = std::max(joint_min_[i], best_x_[i] - 2.0 * M_PI);
         }
     }
 
     for (size_t i = 0; i < joint_max_.size(); i++) {
         if (types_[i] == KDL::BasicJointType::Continuous) {
-            x_max_[i] = best_x_[i] + 2 * M_PI;
-        }
-        else if (types_[i] == KDL::BasicJointType::TransJoint) {
+            x_max_[i] = best_x_[i] + 2.0 * M_PI;
+        } else if (types_[i] == KDL::BasicJointType::TransJoint) {
             x_max_[i] = joint_max_[i];
-        }
-        else {
-            x_max_[i] = std::min(joint_max_[i], best_x_[i] + 2 * M_PI);
+        } else {
+            x_max_[i] = std::min(joint_max_[i], best_x_[i] + 2.0 * M_PI);
         }
     }
 
@@ -473,26 +479,29 @@ double NLOPT_IK::minJoints(
     }
 
     return err;
-
 }
 
 void NLOPT_IK::cartSumSquaredError(
     const std::vector<double>& x,
     double error[])
 {
-    // Actual function to compute Euclidean distance error.  This uses
-    // the KDL Forward Kinematics solver to compute the Cartesian pose
-    // of the current joint configuration and compares that to the
-    // desired Cartesian pose for the IK solve.
+    return cartSumSquaredError(x.data(), error);
+}
 
+// Actual function to compute Euclidean distance error.  This uses
+// the KDL Forward Kinematics solver to compute the Cartesian pose
+// of the current joint configuration and compares that to the
+// desired Cartesian pose for the IK solve.
+void NLOPT_IK::cartSumSquaredError(const double* x, double error[])
+{
     if (progress_ != -3) {
         nlopt_.force_stop();
         return;
     }
 
-    KDL::JntArray q(x.size());
+    auto& q = q_tmp_;
 
-    for (uint i = 0; i < x.size(); i++) {
+    for (uint i = 0; i < chain_.getNrOfJoints(); i++) {
         q(i) = x[i];
     }
 
@@ -516,7 +525,7 @@ void NLOPT_IK::cartSumSquaredError(
 
     if (KDL::Equal(delta_twist, KDL::Twist::Zero(), eps_)) {
         progress_ = 1;
-        best_x_ = x;
+        std::copy(x, x + chain_.getNrOfJoints(), begin(best_x_));
     }
 }
 
@@ -531,7 +540,7 @@ void NLOPT_IK::cartL2NormError(const std::vector<double>& x, double error[])
         return;
     }
 
-    KDL::JntArray q(x.size());
+    auto& q = q_tmp_;
 
     for (uint i = 0; i < x.size(); i++) {
         q(i) = x[i];
@@ -541,7 +550,7 @@ void NLOPT_IK::cartL2NormError(const std::vector<double>& x, double error[])
     int rc = fk_solver_.JntToCart(q, currentPose);
 
     if (rc < 0) {
-        ROS_FATAL_STREAM("KDL FKSolver is failing: "<<q.data);
+        ROS_FATAL_STREAM("KDL FKSolver is failing: " << q.data);
     }
 
     KDL::Twist delta_twist = KDL::diffRelative(f_target_, currentPose);
@@ -573,7 +582,7 @@ void NLOPT_IK::cartDQError(const std::vector<double>& x, double error[])
         return;
     }
 
-    KDL::JntArray q(x.size());
+    auto& q = q_tmp_;
 
     for (uint i = 0; i < x.size(); i++) {
         q(i) = x[i];
@@ -611,13 +620,6 @@ void NLOPT_IK::cartDQError(const std::vector<double>& x, double error[])
     }
 }
 
-/// User command to start an IK solve. Takes in a seed configuration, a
-/// Cartesian pose, and (optional) a desired configuration. If the desired is
-/// not provided, the seed is used. Outputs the joint configuration found that
-/// solves the IK.
-///
-/// Returns -3 if a configuration could not be found within the eps set up in
-/// the constructor.
 int NLOPT_IK::CartToJnt(
     const KDL::JntArray& q_init,
     const KDL::Frame& p_in,
@@ -639,8 +641,6 @@ int NLOPT_IK::CartToJnt(
     if (res == 0) {
         q_out = qout();
     }
-
-    return -res;
 
     return progress_;
 }
