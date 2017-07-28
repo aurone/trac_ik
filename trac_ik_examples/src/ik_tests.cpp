@@ -34,15 +34,9 @@ OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <trac_ik/trac_ik.hpp>
 #include <trac_ik/utils.h>
 
-double fRand(double min, double max)
-{
-    double f = (double)rand() / RAND_MAX;
-    return min + f * (max - min);
-}
-
 void test(
     ros::NodeHandle& nh,
-    double num_samples,
+    int num_samples,
     const std::string& chain_start,
     const std::string& chain_end,
     double timeout,
@@ -51,8 +45,8 @@ void test(
     double eps = 1e-5;
 
     const std::string& robot_description = "robot_description";
-    const std::string& base_name = "torso_lift_link";
-    const std::string& tip_name = "ee_link";
+    const std::string& base_name = chain_start;
+    const std::string& tip_name = chain_end;
 
     ros::NodeHandle node_handle("~");
     urdf::Model robot_model;
@@ -66,9 +60,9 @@ void test(
 
     KDL::Chain chain;
     std::vector<std::string> link_names;
+    std::vector<std::string> joint_names;
     KDL::JntArray joint_min;
     KDL::JntArray joint_max;
-    std::vector<std::string> joint_names;
     if (!TRAC_IK::InitKDLChain(
         robot_model, base_name, tip_name,
         chain, link_names, joint_names, joint_min, joint_max))
@@ -77,13 +71,12 @@ void test(
         return;
     }
 
-    // This constructor parses the URDF loaded in rosparm urdf_param into the
-    // needed KDL structures.  We then pull these out to compare against the KDL
-    // IK solver.
-    TRAC_IK::TRAC_IK tracik_solver(chain, joint_min, joint_max, timeout, eps);
+    ROS_INFO("link names: %zu", link_names.size());
+    ROS_INFO("joint names: %zu", joint_names.size());
+    ROS_INFO("joint_min: %zu", joint_min.data.size());
+    ROS_INFO("joint_max: %zu", joint_max.data.size());
 
-    KDL::JntArray ll; // lower joint limits
-    KDL::JntArray ul; // upper joint limits
+    TRAC_IK::TRAC_IK tracik_solver(chain, joint_min, joint_max, timeout, eps);
 
     bool valid = tracik_solver.getKDLChain(chain);
 
@@ -92,7 +85,9 @@ void test(
         return;
     }
 
-    valid = tracik_solver.getKDLLimits(ll,ul);
+    KDL::JntArray ll;
+    KDL::JntArray ul;
+    valid = tracik_solver.getKDLLimits(ll, ul);
 
     if (!valid) {
         ROS_ERROR("There were no valid KDL joint limits found");
@@ -102,31 +97,34 @@ void test(
     assert(chain.getNrOfJoints() == ll.data.size());
     assert(chain.getNrOfJoints() == ul.data.size());
 
-    ROS_INFO ("Using %d joints", chain.getNrOfJoints());
-
-
     // Set up KDL IK
     KDL::ChainFkSolverPos_recursive fk_solver(chain); // Forward kin. solver
     KDL::ChainIkSolverVel_pinv vik_solver(chain); // PseudoInverse vel solver
-    KDL::ChainIkSolverPos_NR_JL kdl_solver(chain,ll,ul,fk_solver, vik_solver, 1, eps); // Joint Limit Solver
+    KDL::ChainIkSolverPos_NR_JL kdl_solver(chain, ll, ul, fk_solver, vik_solver, 1, eps); // Joint Limit Solver
     // 1 iteration per solve (will wrap in timed loop to compare with TRAC-IK)
 
-    // Create Nominal chain configuration midway between all joint limits
+    ////////////////////////////////////////////////////////////////////////
+    // Create Nominal chain configuration midway between all joint limits //
+    ////////////////////////////////////////////////////////////////////////
+
     KDL::JntArray nominal(chain.getNrOfJoints());
 
-    for (uint j = 0; j<nominal.data.size(); j++) {
-        nominal(j) = (ll(j) + ul(j)) / 2.0;
+    for (uint j = 0; j < nominal.data.size(); ++j) {
+        nominal(j) = 0.5 * (ll(j) + ul(j));
     }
 
-    // Create desired number of valid, random joint configurations
-    std::vector<KDL::JntArray> JointList;
+    /////////////////////////////////////////////////////////////////
+    // Create desired number of valid, random joint configurations //
+    /////////////////////////////////////////////////////////////////
+
+    std::vector<KDL::JntArray> position_samples;
     KDL::JntArray q(chain.getNrOfJoints());
 
-    for (uint i = 0; i < num_samples; i++) {
-        for (uint j = 0; j < ll.data.size(); j++) {
-            q(j) = fRand(ll(j), ul(j));
+    for (uint i = 0; i < num_samples; ++i) {
+        for (uint j = 0; j < ll.data.size(); ++j) {
+            q(j) = TRAC_IK::fRand(ll(j), ul(j));
         }
-        JointList.push_back(q);
+        position_samples.push_back(q);
     }
 
     boost::posix_time::ptime start_time;
@@ -136,45 +134,50 @@ void test(
     KDL::Frame end_effector_pose;
     int rc;
 
-    double total_time = 0;
-    uint success = 0;
+    double total_time = 0.0;
+    int success = 0;
 
     ROS_INFO_STREAM("*** Testing KDL with " << num_samples << " random samples");
 
-    for (uint i = 0; i < num_samples; i++) {
-        fk_solver.JntToCart(JointList[i],end_effector_pose);
+    int tens = -1;
+
+    for (int i = 0; i < num_samples; i++) {
+        fk_solver.JntToCart(position_samples[i], end_effector_pose);
         double elapsed = 0;
         result = nominal; // start with nominal
         start_time = boost::posix_time::microsec_clock::local_time();
         do {
             q = result; // when iterating start with last solution
-            rc = kdl_solver.CartToJnt(q,end_effector_pose,result);
+            rc = kdl_solver.CartToJnt(q, end_effector_pose,result);
             diff = boost::posix_time::microsec_clock::local_time() - start_time;
             elapsed = diff.total_nanoseconds() / 1e9;
         } while (rc < 0 && elapsed < timeout);
         total_time += elapsed;
         if (rc >= 0) {
-            success++;
+            ++success;
         }
 
-        if (int((double)i / num_samples * 100) % 10 == 0) {
-          ROS_INFO_STREAM_THROTTLE(1, int((i) / num_samples * 100) << "\% done");
+        int new_tens = i * 10 / num_samples;
+        if (new_tens != tens) {
+            ROS_INFO_STREAM(i * 100 / num_samples << "\% done");
+            tens = new_tens;
         }
     }
 
+    tens = -1;
+
     ROS_INFO_STREAM("KDL found " << success << " solutions (" << 100.0 * success / num_samples << "\%) with an average of " << total_time / num_samples << " secs per sample");
 
-
-    total_time = 0;
+    total_time = 0.0;
     success = 0;
 
     ROS_INFO_STREAM("*** Testing TRAC-IK with " << num_samples << " random samples");
 
-    for (uint i=0; i < num_samples; i++) {
-        fk_solver.JntToCart(JointList[i],end_effector_pose);
+    for (int i = 0; i < num_samples; i++) {
+        fk_solver.JntToCart(position_samples[i], end_effector_pose);
         double elapsed = 0;
         start_time = boost::posix_time::microsec_clock::local_time();
-        rc=tracik_solver.CartToJnt(nominal, end_effector_pose, result);
+        rc = tracik_solver.CartToJnt(nominal, end_effector_pose, result);
         diff = boost::posix_time::microsec_clock::local_time() - start_time;
         elapsed = diff.total_nanoseconds() / 1e9;
         total_time += elapsed;
@@ -182,8 +185,10 @@ void test(
             success++;
         }
 
-        if (int((double)i / num_samples * 100) % 10 == 0) {
-            ROS_INFO_STREAM_THROTTLE(1,int((i)/num_samples*100) << "\% done");
+        int new_tens = i * 10 / num_samples;
+        if (new_tens != tens) {
+            ROS_INFO_STREAM(i * 100 / num_samples << "\% done");
+            tens = new_tens;
         }
     }
 

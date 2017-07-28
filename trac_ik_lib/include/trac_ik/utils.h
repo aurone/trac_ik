@@ -1,6 +1,9 @@
 #ifndef TRAC_IK_UTILS_H
 #define TRAC_IK_UTILS_H
 
+// standard includes
+#include <stdlib.h>
+#include <ostream>
 #include <string>
 #include <vector>
 
@@ -26,6 +29,21 @@ bool InitKDLChain(
     KDL::JntArray& joint_min,
     KDL::JntArray& joint_max);
 
+inline double fRand(double min, double max)
+{
+    double f = (double) rand() / RAND_MAX;
+    return min + f * (max - min);
+}
+
 } // namespace TRAC_IK
+
+namespace KDL {
+
+std::ostream& operator<<(std::ostream& o, const JntArray& q);
+std::ostream& operator<<(std::ostream& o, const Vector& v);
+std::ostream& operator<<(std::ostream& o, const Rotation& R);
+std::ostream& operator<<(std::ostream& o, const Frame& f);
+
+} // namespace KDl
 
 #endif

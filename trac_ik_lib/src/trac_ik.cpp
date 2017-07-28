@@ -28,15 +28,22 @@ OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISE
 OF THE POSSIBILITY OF SUCH DAMAGE.
 ********************************************************************************/
 
-
 #include <trac_ik/trac_ik.hpp>
+
+// standard includes
+#include <chrono>
+#include <limits>
+
+// system includes
 #include <boost/date_time.hpp>
 #include <boost/make_shared.hpp>
 #include <Eigen/Geometry>
-#include <ros/ros.h>
-#include <limits>
 #include <kdl_parser/kdl_parser.hpp>
+#include <ros/ros.h>
 #include <urdf/model.h>
+
+// project includes
+#include <trac_ik/utils.h>
 
 namespace TRAC_IK {
 
@@ -46,19 +53,18 @@ TRAC_IK::TRAC_IK(
     const KDL::JntArray& q_max,
     double max_time,
     double eps,
-    SolveType _type)
+    SolveType type)
 :
     chain_(chain),
     joint_min_(q_min),
     joint_max_(q_max),
     eps_(eps),
     max_time_(max_time),
-    solve_type_(_type),
+    solve_type_(type),
     bounds_(KDL::Twist::Zero()),
-    jac_solver_(chain_),
-    nl_solver_(chain_, joint_min_, joint_max_, max_time_, eps_, NLOPT_IK::SumSq),
-    ik_solver_(chain_, joint_min_, joint_max_, eps_, true, true),
-    work_(io_service_)
+    jac_solver_(chain),
+    nl_solver_(chain, joint_min_, joint_max_, eps_, NLOPT_IK::SumSq),
+    ik_solver_(chain, joint_min_, joint_max_, eps_, true, true)
 {
     assert(chain_.getNrOfJoints() == joint_min_.data.size());
     assert(chain_.getNrOfJoints() == joint_max_.data.size());
@@ -79,13 +85,14 @@ TRAC_IK::TRAC_IK(
     }
 
     assert(joint_types_.size() == joint_min_.data.size());
-
-    threads_.create_thread(boost::bind(&boost::asio::io_service::run, &io_service_));
-    threads_.create_thread(boost::bind(&boost::asio::io_service::run, &io_service_));
 }
 
 bool TRAC_IK::unique_solution(const KDL::JntArray& sol)
 {
+    auto myEqual = [](const KDL::JntArray& a, const KDL::JntArray& b) {
+        return (a.data - b.data).isZero(1e-4);
+    };
+
     for (uint i = 0; i < solutions_.size(); i++) {
         if (myEqual(sol, solutions_[i])) {
             return false;
@@ -128,163 +135,18 @@ inline void normalizeAngle(double& val, const double& target)
     }
 }
 
-bool TRAC_IK::runKDL(const KDL::JntArray &q_init, const KDL::Frame &p_in)
+void TRAC_IK::randomize(
+    KDL::JntArray& q,
+    const KDL::JntArray& q_init) const
 {
-    KDL::JntArray q_out;
-
-    double fulltime = max_time_;
-    KDL::JntArray seed = q_init;
-
-    boost::posix_time::time_duration timediff;
-    double time_left;
-
-    // the basic logic here: gather unique solutions and their error metrics
-    // until time runs out if solve_type == speed, break on first solution and
-    // tell nlopt to abort (tell nlopt to abort anyway, but it probably finishes
-    // around the same time?)
-
-    while (true) {
-        timediff = boost::posix_time::microsec_clock::local_time() - start_time_;
-        time_left = fulltime - timediff.total_nanoseconds() / 1000000000.0;
-
-        if (time_left <= 0) {
-            break;
+    for (size_t j = 0; j < q.data.size(); ++j) {
+        if (joint_types_[j] == KDL::BasicJointType::Continuous) {
+            q(j) = fRand(q_init(j) - 2.0 * M_PI, q_init(j) + 2.0 * M_PI);
         }
-
-        int kdlRC = ik_solver_.CartToJnt(seed, p_in, q_out, bounds_);
-        if (kdlRC >= 0) {
-            switch (solve_type_) {
-            case Manip1:
-            case Manip2:
-                normalize_limits(q_init, q_out);
-                break;
-            default:
-                normalize_seed(q_init, q_out);
-                break;
-            }
-            mtx_.lock();
-            if (unique_solution(q_out)) {
-                solutions_.push_back(q_out);
-                uint curr_size = solutions_.size();
-                errors_.resize(curr_size);
-                mtx_.unlock();
-                double err, penalty;
-                switch (solve_type_) {
-                case Manip1:
-                    penalty = manipPenalty(q_out);
-                    err = penalty * TRAC_IK::ManipValue1(q_out);
-                    break;
-                case Manip2:
-                    penalty = manipPenalty(q_out);
-                    err = penalty * TRAC_IK::ManipValue2(q_out);
-                    break;
-                default:
-                    err = TRAC_IK::JointErr(q_init, q_out);
-                    break;
-                }
-                mtx_.lock();
-                errors_[curr_size - 1] = std::make_pair(err, curr_size - 1);
-            }
-            mtx_.unlock();
-        }
-
-        if (!solutions_.empty() && solve_type_ == Speed) {
-            break;
-        }
-
-        // choose a new random seed
-        for (unsigned int j = 0; j < seed.data.size(); j++) {
-            if (joint_types_[j] == KDL::BasicJointType::Continuous) {
-                seed(j) = fRand(q_init(j) - 2 * M_PI, q_init(j) + 2 * M_PI);
-            }
-            else {
-                seed(j) = fRand(joint_min_(j), joint_max_(j));
-            }
+        else {
+            q(j) = fRand(joint_min_(j), joint_max_(j));
         }
     }
-    nl_solver_.abort();
-
-    return true;
-}
-
-bool TRAC_IK::runNLOPT(
-    const KDL::JntArray &q_init,
-    const KDL::Frame &p_in)
-{
-    KDL::JntArray q_out;
-
-    double fulltime = max_time_;
-    KDL::JntArray seed = q_init;
-
-    boost::posix_time::time_duration timediff;
-    double time_left;
-
-    while (true) {
-        timediff = boost::posix_time::microsec_clock::local_time() - start_time_;
-        time_left = fulltime - timediff.total_nanoseconds() / 1000000000.0;
-
-        if (time_left <= 0) {
-            break;
-        }
-
-        nl_solver_.setMaxtime(time_left);
-
-        int nloptRC = nl_solver_.CartToJnt(seed, p_in, q_out, bounds_);
-        if (nloptRC >= 0) {
-            switch (solve_type_) {
-            case Manip1:
-            case Manip2:
-                normalize_limits(q_init, q_out);
-                break;
-            default:
-                normalize_seed(q_init, q_out);
-                break;
-            }
-            mtx_.lock();
-            if (unique_solution(q_out)) {
-                solutions_.push_back(q_out);
-                uint curr_size = solutions_.size();
-                errors_.resize(curr_size);
-                mtx_.unlock();
-                double err, penalty;
-                switch (solve_type_) {
-                case Manip1:
-                    penalty = manipPenalty(q_out);
-                    err = penalty * TRAC_IK::ManipValue1(q_out);
-                    break;
-                case Manip2:
-                    penalty = manipPenalty(q_out);
-                    err = penalty * TRAC_IK::ManipValue2(q_out);
-                    break;
-                default:
-                    err = TRAC_IK::JointErr(q_init, q_out);
-                    break;
-                }
-                mtx_.lock();
-                errors_[curr_size - 1] = std::make_pair(err, curr_size - 1);
-            }
-            mtx_.unlock();
-        }
-
-        if (!solutions_.empty() && solve_type_ == Speed) {
-            break;
-        }
-
-        for (unsigned int j = 0; j < seed.data.size(); j++) {
-            if (joint_types_[j] == KDL::BasicJointType::Continuous) {
-                seed(j) = fRand(q_init(j) - 2 * M_PI, q_init(j) + 2 * M_PI);
-            }
-            else {
-                seed(j) = fRand(joint_min_(j), joint_max_(j));
-            }
-        }
-    }
-
-    ik_solver_.abort();
-
-    nl_solver_.setMaxtime(fulltime);
-
-    return true;
 }
 
 void TRAC_IK::normalize_seed(
@@ -404,71 +266,160 @@ int TRAC_IK::CartToJnt(
     KDL::JntArray &q_out,
     const KDL::Twist& bounds)
 {
-    start_time_ = boost::posix_time::microsec_clock::local_time();
-
-    nl_solver_.reset();
-    ik_solver_.reset();
-
     solutions_.clear();
     errors_.clear();
 
-    bounds_ = bounds;
+    ik_solver_.setBounds(bounds);
+    nl_solver_.setBounds(bounds);
 
-    std::vector<boost::shared_future<bool>> pending_data;
+    KDL::JntArray seed = q_init; // TODO: cache tmp
 
-    using task_t = boost::packaged_task<bool>;
-    boost::shared_ptr<task_t> task1 = boost::make_shared<task_t>(
-            boost::bind(&TRAC_IK::runKDL, this, boost::cref(q_init), boost::cref(p_in)));
+    ik_solver_.restart(seed, p_in);
+    nl_solver_.restart(seed, p_in);
 
-    boost::shared_ptr<task_t> task2 = boost::make_shared<task_t>(
-            boost::bind(&TRAC_IK::runNLOPT, this, boost::cref(q_init), boost::cref(p_in)));
+    enum Solver {
+        SOLVER_KDL,
+        SOLVER_NLOPT,
 
-    boost::shared_future<bool> fut1(task1->get_future());
-    boost::shared_future<bool> fut2(task2->get_future());
+        SOLVER_COUNT
+    };
 
-    /*
-     // this was for pre-c++11
-     pending_data.push_back(boost::move(fut1));
-     pending_data.push_back(boost::move(fut2));
-     */
-    pending_data.push_back(fut1);
-    pending_data.push_back(fut2);
+    int solver = SOLVER_NLOPT;
 
-    io_service_.post(boost::bind(&task_t::operator(), task1));
-    io_service_.post(boost::bind(&task_t::operator(), task2));
+    const int max_iters = 250;
+    for (int i = 0; i < max_iters; ++i) {
+        // interleave iterations of kdl and nl opt
+        switch (solver) {
+        case SOLVER_KDL: {
+            auto before = std::chrono::high_resolution_clock::now();
+            int rc = ik_solver_.step();
+            auto after = std::chrono::high_resolution_clock::now();
+            ROS_DEBUG_THROTTLE(1.0, "kdl step took %f seconds", std::chrono::duration<double>(after - before).count());
+            if (rc == 0) {
+                ROS_DEBUG("KDL found solution on iteration %d", i);
 
-    boost::wait_for_all(pending_data.begin(), pending_data.end());
+                q_out = ik_solver_.qout();
+
+                if (solve_type_ == Speed) {
+                    return 0; // first solution returned
+                }
+
+                switch (solve_type_) {
+                case Manip1:
+                case Manip2:
+                    normalize_limits(q_init, q_out);
+                    break;
+                default:
+                    normalize_seed(q_init, q_out);
+                    break;
+                }
+
+                if (unique_solution(q_out)) {
+                    solutions_.push_back(q_out);
+                    double err;
+                    switch (solve_type_) {
+                    case Manip1: {
+                        err = manipPenalty(q_out) * TRAC_IK::ManipValue1(q_out);
+                    }   break;
+                    case Manip2: {
+                        err = manipPenalty(q_out) * TRAC_IK::ManipValue2(q_out);
+                       }   break;
+                    default:
+                        err = TRAC_IK::JointErr(q_init, q_out);
+                        break;
+                    }
+
+                    errors_.emplace_back(err, solutions_.size() - 1);
+                }
+
+                // sample a new random seed to search for additional solutions
+                // on successive iterations
+                randomize(seed, q_init);
+                ik_solver_.restart(seed);
+            } else if (rc == 2) {
+                ROS_DEBUG("kdl encountered local minima -> reseed");
+                randomize(seed, q_init);
+                ik_solver_.restart(seed);
+            }
+
+            solver = SOLVER_NLOPT;
+        }   break;
+        case SOLVER_NLOPT: {
+            auto before = std::chrono::high_resolution_clock::now();
+            int rc =  nl_solver_.step();
+            auto after = std::chrono::high_resolution_clock::now();
+            ROS_DEBUG_THROTTLE(1.0, "nlopt step took %f seconds", std::chrono::duration<double>(after - before).count());
+            if (rc == 0) {
+                ROS_DEBUG("NLOPT found solution on iteration %d", i);
+
+                q_out = nl_solver_.qout();
+
+                if (solve_type_ == Speed) {
+                    return 0; // first solution returned
+                }
+
+                switch (solve_type_) {
+                case Manip1:
+                case Manip2:
+                    normalize_limits(q_init, q_out);
+                    break;
+                default:
+                    normalize_seed(q_init, q_out);
+                    break;
+                }
+
+                if (unique_solution(q_out)) {
+                    solutions_.push_back(q_out);
+                    double err;
+                    switch (solve_type_) {
+                    case Manip1:
+                        err = manipPenalty(q_out) * TRAC_IK::ManipValue1(q_out);
+                        break;
+                    case Manip2:
+                        err = manipPenalty(q_out) * TRAC_IK::ManipValue2(q_out);
+                        break;
+                    default:
+                        err = TRAC_IK::JointErr(q_init, q_out);
+                        break;
+                    }
+
+                    errors_.emplace_back(err, solutions_.size() - 1);
+                }
+
+                randomize(seed, q_init);
+                nl_solver_.restart(seed);
+            }
+
+            solver = SOLVER_KDL;
+        }   break;
+        default: {
+            ROS_ERROR("Unknown solver type");
+            assert(0);
+        }   break;
+        }
+    }
 
     if (solutions_.empty()) {
-        q_out = q_init;
         return -3;
     }
+
+    using solution_error = std::pair<double, unsigned int>;
+    auto comp_error = [](const solution_error& p, const solution_error& q) {
+        return p.first < q.first;
+    };
 
     switch (solve_type_) {
     case Manip1:
     case Manip2:
-        std::sort(errors_.rbegin(), errors_.rend()); // rbegin/rend to sort by max
+        std::sort(errors_.rbegin(), errors_.rend(), comp_error); // rbegin/rend to sort by max
         break;
     default:
-        std::sort(errors_.begin(), errors_.end());
+        std::sort(errors_.begin(), errors_.end(), comp_error);
         break;
     }
 
     q_out = solutions_[errors_[0].second];
-
     return solutions_.size();
-}
-
-TRAC_IK::~TRAC_IK()
-{
-    // Force all threads_ to return from io_service::run().
-    io_service_.stop();
-
-    // Suppress all exceptions.
-    try {
-        threads_.join_all();
-    } catch (...) {
-    }
 }
 
 } // namespace TRAC_IK

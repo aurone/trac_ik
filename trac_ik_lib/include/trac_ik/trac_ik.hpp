@@ -59,15 +59,13 @@ public:
         double _eps = 1e-5,
         SolveType _type = Speed);
 
-    ~TRAC_IK();
-
     // TODO: propagate timeout to underlying solvers
     void setTimeout(double max_time) { max_time_ = max_time; }
     void setBounds(const KDL::Twist& bounds) { bounds_ = bounds; }
 
-    bool getKDLChain(KDL::Chain& chain_)
+    bool getKDLChain(KDL::Chain& chain)
     {
-        chain_ = chain_;
+        chain = chain_;
         return true;
     }
 
@@ -90,6 +88,7 @@ public:
         return err;
     }
 
+    /// Return a negative value if an error was encountered.
     int CartToJnt(
         const KDL::JntArray &q_init,
         const KDL::Frame &p_in,
@@ -118,28 +117,14 @@ private:
 
     boost::posix_time::ptime start_time_;
 
-    boost::mutex mtx_;
     std::vector<KDL::JntArray> solutions_;
-    std::vector<std::pair<double, uint> > errors_;
+    std::vector<std::pair<double, size_t>> errors_;
 
-    boost::asio::io_service io_service_;
-    boost::thread_group threads_;
-    boost::asio::io_service::work work_;
-
-    bool runKDL(const KDL::JntArray &q_init, const KDL::Frame &p_in);
-
-    bool runNLOPT(const KDL::JntArray &q_init, const KDL::Frame &p_in);
-
+    void randomize(KDL::JntArray& q, const KDL::JntArray& q_init) const;
     void normalize_seed(const KDL::JntArray& seed, KDL::JntArray& solution);
     void normalize_limits(const KDL::JntArray& seed, KDL::JntArray& solution);
 
     bool unique_solution(const KDL::JntArray& sol);
-
-    static double fRand(double min, double max)
-    {
-        double f = (double) rand() / RAND_MAX;
-        return min + f * (max - min);
-    }
 
     /* @brief Manipulation metrics and penalties taken from "Workspace
      Geometric Characterization and Manipulability of Industrial Robots",
@@ -149,11 +134,6 @@ private:
     double manipPenalty(const KDL::JntArray&);
     double ManipValue1(const KDL::JntArray&);
     double ManipValue2(const KDL::JntArray&);
-
-    bool myEqual(const KDL::JntArray& a, const KDL::JntArray& b)
-    {
-        return (a.data - b.data).isZero(1e-4);
-    }
 };
 
 } // namespace TRAC_IK

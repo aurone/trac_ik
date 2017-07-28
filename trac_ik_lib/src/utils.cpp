@@ -104,3 +104,37 @@ bool InitKDLChain(
 }
 
 } // namespace TRAC_IK
+
+namespace KDL {
+
+std::ostream& operator<<(std::ostream& o, const JntArray& q)
+{
+    o << '[' << ' ';
+    for (unsigned int i = 0; i < q.rows(); ++i) {
+        o << q(i) << ' ';
+    }
+    o << ']';
+    return o;
+}
+
+std::ostream& operator<<(std::ostream& o, const Vector& v)
+{
+    o << '(' << v.x() << ", " << v.y() << ", " << v.z() << ')';
+    return o;
+}
+
+std::ostream& operator<<(std::ostream& o, const Rotation& R)
+{
+    double a, b, c;
+    R.GetEulerZYX(a, b, c);
+    o << "(" << a << ", " << b << ", " << c << ")";
+    return o;
+}
+
+std::ostream& operator<<(std::ostream& o, const Frame& f)
+{
+    o << "{ p: " << f.p << ", M: " << f.M << " }";
+    return o;
+}
+
+} // namespace KDL

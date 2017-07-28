@@ -5,33 +5,39 @@ All rights reserved.
 Redistribution and use in source and binary forms, with or without modification,
  are permitted provided that the following conditions are met:
 
-    1. Redistributions of source code must retain the above copyright notice, 
+    1. Redistributions of source code must retain the above copyright notice,
        this list of conditions and the following disclaimer.
 
     2. Redistributions in binary form must reproduce the above copyright notice,
-       this list of conditions and the following disclaimer in the documentation 
+       this list of conditions and the following disclaimer in the documentation
        and/or other materials provided with the distribution.
 
     3. Neither the name of the copyright holder nor the names of its contributors
-       may be used to endorse or promote products derived from this software 
+       may be used to endorse or promote products derived from this software
        without specific prior written permission.
 
 THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
-ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED 
+ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
 WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
 IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT,
-INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, 
-BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, 
+INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING,
+BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
 DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF
-LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE 
+LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE
 OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED
 OF THE POSSIBILITY OF SUCH DAMAGE.
 ********************************************************************************/
 
 #include <trac_ik/kdl_tl.hpp>
-#include <boost/date_time.hpp>
-#include <ros/ros.h>
+
+// standard includes
 #include <limits>
+
+// system includes
+#include <ros/ros.h>
+
+// project includes
+#include <trac_ik/utils.h>
 
 namespace KDL {
 
@@ -46,25 +52,23 @@ ChainIkSolverPos_TL::ChainIkSolverPos_TL(
     chain_(chain),
     joint_min_(joint_min),
     joint_max_(joint_max),
+    joint_types_(),
+    vik_solver_(chain),
+    fk_solver_(chain),
+    bounds_(KDL::Twist::Zero()),
+    eps_(eps),
+    rr_(random_restart),
+    wrap_(try_jl_wrap),
     q_buff1_(chain_.getNrOfJoints()),
     q_buff2_(chain_.getNrOfJoints()),
     q_curr_(&q_buff1_),
     q_next_(&q_buff2_),
-    delta_q_(chain.getNrOfJoints()),
-    bounds_(KDL::Twist::Zero()),
-    eps_( eps),
-    rr_(random_restart),
-    wrap_(try_jl_wrap),
-    vik_solver_(chain),
-    fk_solver_(chain),
-    aborted_(false)
+    delta_q_(chain.getNrOfJoints())
 {
     assert(chain_.getNrOfJoints() == joint_min.data.size());
     assert(chain_.getNrOfJoints() == joint_max.data.size());
 
-    reset();
-
-    for (uint i = 0; i < chain_.segments.size(); i++) {
+    for (size_t i = 0; i < chain_.segments.size(); i++) {
         std::string type = chain_.segments[i].getJoint().getTypeName();
         if (type.find("Rot") != std::string::npos) {
             if (joint_max(joint_types_.size()) >= std::numeric_limits<float>::max() &&
@@ -82,8 +86,6 @@ ChainIkSolverPos_TL::ChainIkSolverPos_TL(
     assert(joint_types_.size() == joint_max.data.size());
 }
 
-ChainIkSolverPos_TL::~ChainIkSolverPos_TL() { }
-
 int ChainIkSolverPos_TL::CartToJnt(
     const KDL::JntArray& q_init,
     const KDL::Frame& p_in,
@@ -96,7 +98,7 @@ int ChainIkSolverPos_TL::CartToJnt(
     const int max_iterations = 100;
     int res = 1;
     int i = 0;
-    while (i < max_iterations && res != 0 && !aborted_) {
+    while (i < max_iterations && res != 0) {
         res = step();
         if (res == 2) { // local minima => random restart
             randomize(*q_curr_);
@@ -115,12 +117,14 @@ void ChainIkSolverPos_TL::restart(
     const KDL::JntArray& q_init,
     const KDL::Frame& p_in)
 {
+    ROS_DEBUG_STREAM("kdl restart. q_init = " << q_init << ", p_in = " << p_in);
     *q_curr_ = q_init;
     f_target_ = p_in;
 }
 
 void ChainIkSolverPos_TL::restart(const KDL::JntArray& q_init)
 {
+    ROS_DEBUG_STREAM("kdl restart pose. q_init = " << q_init);
     *q_curr_ = q_init;
 }
 
@@ -243,12 +247,11 @@ void ChainIkSolverPos_TL::randomize(KDL::JntArray& q)
 {
     for (size_t j = 0; j < q.data.size(); ++j) {
         if (joint_types_[j] == KDL::BasicJointType::Continuous) {
-            q(j) = fRand(q(j) - 2 * M_PI, q(j) + 2 * M_PI);
+            q(j) = TRAC_IK::fRand(q(j) - 2 * M_PI, q(j) + 2 * M_PI);
         } else {
-            q(j) = fRand(joint_min_(j), joint_max_(j));
+            q(j) = TRAC_IK::fRand(joint_min_(j), joint_max_(j));
         }
     }
 }
 
-}
-
+} // namespace KDL
