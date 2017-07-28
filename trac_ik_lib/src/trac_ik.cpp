@@ -302,17 +302,19 @@ int TRAC_IK::CartToJnt(
         SOLVER_COUNT
     };
 
-    int solver = SOLVER_NLOPT;
+    int solver = SOLVER_KDL;
+//    int solver = SOLVER_NLOPT;
 
-    const int max_iters = max_iters_;
+    const int step_size = 50;
+    const int max_iters = max_iters_ / step_size;
     for (int i = 0; i < max_iters; ++i) {
         // interleave iterations of kdl and nl opt
         switch (solver) {
         case SOLVER_KDL: {
             auto before = std::chrono::high_resolution_clock::now();
-            int rc = ik_solver_.step();
+            int rc = ik_solver_.step(step_size);
             auto after = std::chrono::high_resolution_clock::now();
-            ROS_DEBUG_THROTTLE(1.0, "kdl step took %f seconds", std::chrono::duration<double>(after - before).count());
+            ROS_DEBUG_THROTTLE_NAMED(1.0, "trac_ik", "kdl step took %f seconds", std::chrono::duration<double>(after - before).count());
             if (rc == 0) {
                 ROS_DEBUG_NAMED("trac_ik", "KDL found solution on iteration %d", i);
 
@@ -354,19 +356,15 @@ int TRAC_IK::CartToJnt(
                 // on successive iterations
                 randomize(seed_, q_init);
                 ik_solver_.restart(seed_);
-            } else if (rc == 2) {
-                ROS_DEBUG_NAMED("trac_ik", "kdl encountered local minima -> reseed");
-                randomize(seed_, q_init);
-                ik_solver_.restart(seed_);
             }
 
             solver = SOLVER_NLOPT;
         }   break;
         case SOLVER_NLOPT: {
             auto before = std::chrono::high_resolution_clock::now();
-            int rc =  nl_solver_.step(10);
+            int rc =  nl_solver_.step(step_size); // for some reason, 1 and 2 produce no solutions
             auto after = std::chrono::high_resolution_clock::now();
-            ROS_DEBUG_THROTTLE(1.0, "nlopt step took %f seconds", std::chrono::duration<double>(after - before).count());
+            ROS_DEBUG_THROTTLE_NAMED(1.0, "trac_ik", "nlopt step took %f seconds", std::chrono::duration<double>(after - before).count());
             if (rc == 0) {
                 ROS_DEBUG_NAMED("trac_ik", "NLOPT found solution on iteration %d", i);
 
@@ -418,6 +416,7 @@ int TRAC_IK::CartToJnt(
     }
 
     if (solutions_.empty()) {
+        ROS_DEBUG_NAMED("trac_ik", "Failed to find solution");
         return -3;
     }
 

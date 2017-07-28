@@ -199,7 +199,9 @@ int ChainIkSolverPos_TL::step(int steps)
         if (q_curr_->data.isZero(boost::math::tools::epsilon<float>())) {
             if (rr_) {
                 std::swap(q_curr_, q_next_);
-                return 2;
+                randomize(*q_curr_);
+                fk_solver_.JntToCart(*q_curr_, f_curr_);
+                return 1;
             }
 
             // Below would be an optimization to the normal KDL, where when it
@@ -257,7 +259,7 @@ void ChainIkSolverPos_TL::randomize(KDL::JntArray& q)
 {
     for (size_t j = 0; j < q.data.size(); ++j) {
         if (joint_types_[j] == KDL::BasicJointType::Continuous) {
-            q(j) = TRAC_IK::fRand(q(j) - 2 * M_PI, q(j) + 2 * M_PI);
+            q(j) = TRAC_IK::fRand(q(j) - 2.0 * M_PI, q(j) + 2.0 * M_PI);
         } else {
             q(j) = TRAC_IK::fRand(joint_min_(j), joint_max_(j));
         }
