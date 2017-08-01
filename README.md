@@ -8,7 +8,7 @@ mitigates local minima due to joint limits by random jumps.  The second is an
 SQP (Sequential Quadratic Programming) nonlinear optimization approach which
 uses quasi-Newton methods that better handle joint limits.  By default, the IK
 search returns immediately when either of these algorithms converges to an
-answer.  Secondary constraints of distance and manipulability are also provided 
+answer.  Secondary constraints of distance and manipulability are also provided
 in order to receive back the "best" IK solution.
 
 ###This repo contains 4 ROS packages:###
@@ -31,7 +31,7 @@ Details for use are in trac\_ik\_kinematics\_plugin/README.md. (Note prior to v1
 
 [Humanoids-2015](https://personal.traclabs.com/~pbeeson/publications/b2hd-Beeson-humanoids-15.html) (reported results are from v1.0.0 of TRAC-IK, see below for newer results).
 
-###Some sample results are below: 
+###Some sample results are below:
 
 _Orocos' **KDL**_ (inverse Jacobian w/ joint limits), _**KDL-RR**_ (our fixes to KDL joint limit handling), and _**TRAC-IK**_ (our concurrent inverse Jacobian and non-linear optimization solver; Speed mode) are compared below.
 
@@ -39,7 +39,7 @@ IK success and average speed (for successful solves) as of TRAC-IK tag v1.4.1.  
 
 **Note on success**: Neither KDL nor TRAC-IK uses any mesh information to determine if _valid_ IK solutions result in self-collisions.  IK solutions deal with link distances and joint ranges, and remain agnostic about self-collisions due to volumes.  Expected future enhancements to TRAC-IK that search for multiple solutions may also include the ability to throw out solutions that result in self collisions (provided the URDF has valid geometry information); however, this is currently not the behaviour of any generic IK solver examined to date.
 
-**Note on timings**: The timings provided include both successful and unsuccessful runs.  When an IK solution is not found, the numerical IK solver implementations will run for the full timeout requested, searching for an answer; thus for robot chains where KDL fails much of the time (e.g., Jaco-2), the KDL times are skewed towards the user requested timeout value (here 5 ms).  
+**Note on timings**: The timings provided include both successful and unsuccessful runs.  When an IK solution is not found, the numerical IK solver implementations will run for the full timeout requested, searching for an answer; thus for robot chains where KDL fails much of the time (e.g., Jaco-2), the KDL times are skewed towards the user requested timeout value (here 5 ms).
 
 Chain | DOFs | Orocos' _KDL_ solve rate | Orocos' _KDL_ Avg Time | _KDL-RR_ solve rate | _KDL-RR_ Avg Time | _TRAC-IK_ solve rate | _TRAC-IK_ Avg Time
 - | - | - | - | - | - | - | -
@@ -63,3 +63,21 @@ UR5 | 6 | **35.88%** | 3.30ms | **88.69%** | 0.78ms | **99.55%** | 0.42ms
 NASA Valkyrie arm | 7 | **45.18%** | 3.01ms | **90.05%** | 1.29ms | **99.63%** | 0.61ms
 
 Feel free to [email Patrick](mailto:pbeeson@traclabs.com) if there is a robot chain that you would like to see added above.
+
+### Primary Differences from upstream
+
+This version of the TRAC-IK solver removes all sources from non-determinism from the original version. The primary sources of non-determinism included:
+
+* The use of rand(), srand() for generating random numbers, which is often seeded by external modules using the current system time.
+
+* The use of elapsed system time as the stopping criterion for the solver
+
+* The use of multiple threads to parallelize the execution of each sub-solver
+
+Invocations of rand() are replaced by instances of the pseudo-random number generators found in the <random> header, using the default seed.
+
+The elapsed-time stopping criterion is replaced by a fixed number of iterations, total for both solvers.
+
+To retain some efficiency gained by thread parallelization, this solver explicitly interleaves the execution of the underlying iterative sub-solvers, and uses the result of the first successful solver.
+
+Additionally, this version contains a couple other minor enhancements such as reduced unnecessary allocations.
