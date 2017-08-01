@@ -189,6 +189,8 @@ private:
 
     double iter_per_time_;
 
+    mutable KDL::JntArray tmp_in_, tmp_out_;
+
     const std::vector<std::string>& getJointNames() const override {
         return joint_names_;
     }

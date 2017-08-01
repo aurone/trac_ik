@@ -69,6 +69,9 @@ bool TRAC_IKKinematicsPlugin::initialize(
         return false;
     }
 
+    tmp_in_.resize(chain_.getNrOfJoints());
+    tmp_out_.resize(chain_.getNrOfJoints());
+
     ROS_INFO_NAMED("trac-ik plugin", "Looking in private handle: %s for param name: %s", node_handle.getNamespace().c_str(), (group_name + "/position_only_ik").c_str());
 
     node_handle.param(group_name + "/position_only_ik", position_ik_, false);
@@ -142,7 +145,7 @@ bool TRAC_IKKinematicsPlugin::getPositionFK(
     geometry_msgs::PoseStamped pose;
     tf::Stamped<tf::Pose> tf_pose;
 
-    KDL::JntArray jnt_pos_in(chain_.getNrOfJoints());
+    auto& jnt_pos_in(tmp_in_);
     for (unsigned int i = 0; i < chain_.getNrOfJoints(); i++) {
         jnt_pos_in(i) = joint_angles[i];
     }
@@ -290,8 +293,8 @@ bool TRAC_IKKinematicsPlugin::searchPositionIK(
     KDL::Frame frame;
     tf::poseMsgToKDL(ik_pose, frame);
 
-    KDL::JntArray in(chain_.getNrOfJoints());
-    KDL::JntArray out(chain_.getNrOfJoints());
+    auto& in(tmp_in_);
+    auto& out(tmp_out_);
 
     for (unsigned int z = 0; z < chain_.getNrOfJoints(); ++z) {
         in(z) = ik_seed_state[z];
