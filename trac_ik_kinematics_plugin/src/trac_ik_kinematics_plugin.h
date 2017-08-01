@@ -49,8 +49,6 @@ public:
         iter_per_time_(1500 / 0.005)
     { }
 
-    ~TRAC_IKKinematicsPlugin() { }
-
     /**
      * @brief Given a desired pose of the end-effector, compute the joint angles to reach it
      * @param ik_pose the desired pose of the link
@@ -191,11 +189,11 @@ private:
 
     double iter_per_time_;
 
-    const std::vector<std::string>& getJointNames() const {
+    const std::vector<std::string>& getJointNames() const override {
         return joint_names_;
     }
 
-    const std::vector<std::string>& getLinkNames() const {
+    const std::vector<std::string>& getLinkNames() const override {
         return link_names_;
     }
 
