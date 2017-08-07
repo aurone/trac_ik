@@ -96,7 +96,7 @@ bool InitKDLChain(
                 joint_min(joint_num - 1) = std::numeric_limits<float>::lowest();
                 joint_max(joint_num - 1) = std::numeric_limits<float>::max();
             }
-            ROS_INFO_STREAM("IK Using joint " << segment.getName() << " " << joint_min(joint_num - 1) << " " << joint_max(joint_num - 1));
+            ROS_DEBUG_STREAM("IK Using joint " << segment.getName() << " " << joint_min(joint_num - 1) << " " << joint_max(joint_num - 1));
         }
     }
 

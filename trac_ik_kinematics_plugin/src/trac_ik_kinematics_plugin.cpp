@@ -49,6 +49,8 @@ bool TRAC_IKKinematicsPlugin::initialize(
     const std::string& tip_name,
     double search_discretization)
 {
+    ROS_DEBUG_NAMED("trac-ik plugin", "Initialize TRAC-IK Kinematics Plugin");
+
     setValues(robot_description, group_name, base_name, tip_name, search_discretization);
 
     ros::NodeHandle node_handle("~");
@@ -72,7 +74,7 @@ bool TRAC_IKKinematicsPlugin::initialize(
     tmp_in_.resize(chain_.getNrOfJoints());
     tmp_out_.resize(chain_.getNrOfJoints());
 
-    ROS_INFO_NAMED("trac-ik plugin", "Looking in private handle: %s for param name: %s", node_handle.getNamespace().c_str(), (group_name + "/position_only_ik").c_str());
+    ROS_DEBUG_NAMED("trac-ik plugin", "Looking in private handle: %s for param name: %s", node_handle.getNamespace().c_str(), (group_name + "/position_only_ik").c_str());
 
     node_handle.param(group_name + "/position_only_ik", position_ik_, false);
 
@@ -84,11 +86,11 @@ bool TRAC_IKKinematicsPlugin::initialize(
         bounds_.rot.z(std::numeric_limits<float>::max());
     }
 
-    ROS_INFO_NAMED("trac-ik plugin", "Looking in private handle: %s for param name: %s", node_handle.getNamespace().c_str(), (group_name + "/solve_type").c_str());
+    ROS_DEBUG_NAMED("trac-ik plugin", "Looking in private handle: %s for param name: %s", node_handle.getNamespace().c_str(), (group_name + "/solve_type").c_str());
 
     std::string solve_type;
     node_handle.param(group_name + "/solve_type", solve_type, std::string("Speed"));
-    ROS_INFO_NAMED("trac_ik plugin", "Using solve type %s", solve_type.c_str());
+    ROS_DEBUG_NAMED("trac_ik plugin", "Using solve type %s", solve_type.c_str());
 
     if (solve_type == "Manipulation1") {
         solve_type_ = TRAC_IK::Manip1;
