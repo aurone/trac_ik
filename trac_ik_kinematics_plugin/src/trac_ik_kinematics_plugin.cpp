@@ -49,6 +49,8 @@ bool TRAC_IKKinematicsPlugin::initialize(
     const std::string& tip_name,
     double search_discretization)
 {
+    ROS_DEBUG_NAMED("trac-ik plugin", "Initialize TRAC-IK Kinematics Plugin");
+
     setValues(robot_description, group_name, base_name, tip_name, search_discretization);
 
     ros::NodeHandle node_handle("~");
