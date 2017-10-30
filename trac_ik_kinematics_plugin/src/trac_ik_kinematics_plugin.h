@@ -66,7 +66,7 @@ public:
         std::vector<double> &solution,
         moveit_msgs::MoveItErrorCodes &error_code,
         const kinematics::KinematicsQueryOptions &options =
-                kinematics::KinematicsQueryOptions()) const;
+                kinematics::KinematicsQueryOptions()) const override;
 
     /**
      * @brief Given a desired pose of the end-effector, search for the joint angles required to reach it.
@@ -83,7 +83,7 @@ public:
         std::vector<double> &solution,
         moveit_msgs::MoveItErrorCodes &error_code,
         const kinematics::KinematicsQueryOptions &options =
-                kinematics::KinematicsQueryOptions()) const;
+                kinematics::KinematicsQueryOptions()) const override;
 
     /**
      * @brief Given a desired pose of the end-effector, search for the joint angles required to reach it.
@@ -102,7 +102,7 @@ public:
         std::vector<double> &solution,
         moveit_msgs::MoveItErrorCodes &error_code,
         const kinematics::KinematicsQueryOptions &options =
-                kinematics::KinematicsQueryOptions()) const;
+                kinematics::KinematicsQueryOptions()) const override;
 
     /**
      * @brief Given a desired pose of the end-effector, search for the joint angles required to reach it.
@@ -120,7 +120,7 @@ public:
         const IKCallbackFn &solution_callback,
         moveit_msgs::MoveItErrorCodes &error_code,
         const kinematics::KinematicsQueryOptions &options =
-                kinematics::KinematicsQueryOptions()) const;
+                kinematics::KinematicsQueryOptions()) const override;
 
     /**
      * @brief Given a desired pose of the end-effector, search for the joint angles required to reach it.
@@ -141,7 +141,7 @@ public:
         const IKCallbackFn &solution_callback,
         moveit_msgs::MoveItErrorCodes &error_code,
         const kinematics::KinematicsQueryOptions &options =
-                kinematics::KinematicsQueryOptions()) const;
+                kinematics::KinematicsQueryOptions()) const override;
 
     bool searchPositionIK(
         const geometry_msgs::Pose &ik_pose,
@@ -167,7 +167,7 @@ public:
     bool getPositionFK(
         const std::vector<std::string> &link_names,
         const std::vector<double> &joint_angles,
-        std::vector<geometry_msgs::Pose> &poses) const;
+        std::vector<geometry_msgs::Pose> &poses) const override;
 
 private:
 
@@ -204,7 +204,7 @@ private:
         const std::string& group_name,
         const std::string& base_name,
         const std::string& tip_name,
-        double search_discretization);
+        double search_discretization) override;
 
     int getKDLSegmentIndex(const std::string &name) const;
 };
