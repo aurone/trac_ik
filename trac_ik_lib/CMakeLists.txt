@@ -17,7 +17,9 @@ find_package(Boost REQUIRED COMPONENTS date_time)
 
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(pkg_nlopt REQUIRED nlopt)
-pkg_check_modules(Eigen REQUIRED eigen3)
+
+find_package(Eigen3 REQUIRED)
+#pkg_check_modules(Eigen REQUIRED eigen3)
 # TODO: resolve libraries to absolute paths
 
 
@@ -30,15 +32,15 @@ catkin_package(
     Boost
     # purposefully not including nlopt here, see earlier note
   INCLUDE_DIRS
-    include
+    include ${EIGEN3_INCLUDE_DIR} ${pkg_nlopt_INCLUDE_DIRS}
   LIBRARIES
-    trac_ik
+    trac_ik ${pkg_nlopt_LIBRARIES}
 )
 
 include_directories(
   include
   ${catkin_INCLUDE_DIRS}
-  ${Eigen_INCLUDE_DIRS}
+  ${EIGEN3_INCLUDE_DIR}
   ${Boost_INCLUDE_DIRS}
   ${pkg_nlopt_INCLUDE_DIRS}
 )
